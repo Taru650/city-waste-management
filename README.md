@@ -12,10 +12,10 @@ Sub Admins (Nagar Nigam / Parishad / Panchayat) and District Admins get pendency
 ## Repository layout
 ```
 apps/api      NestJS + PostgreSQL/PostGIS — the single REST API for mobile apps and web portal
-apps/web      Next.js portal (M6)
+apps/web      Next.js portal for administrators and supervisors (dashboard, complaints, masters, staff)
 apps/mobile_* Flutter Citizen and Staff apps (M7)
 infra/        docker-compose (pilot); k8s later
 docs/         plan, milestones, security
 ```
 
-See [`apps/api/README.md`](apps/api/README.md) to run the API and its tests.
+See [`apps/api/README.md`](apps/api/README.md) and [`apps/web/README.md`](apps/web/README.md) to run each app and its tests.

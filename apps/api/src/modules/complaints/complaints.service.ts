@@ -8,6 +8,7 @@ import { ComplaintStatus, Role, WardSource } from '../../common/enums';
 import { MediaService, MediaStage } from '../media/media.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { templates } from '../notifications/templates';
+import { complaintScope as scopeFilter } from '../../common/complaint-scope';
 import { buildComplaintNo, formatComplaintNo, normalizeComplaintNo, SEQ_MAX } from './complaint-number';
 import {
   AssignDto, CreateComplaintDto, DuplicateDto, FeedbackDto, GeoPointDto, ListComplaintsQuery, RejectDto, ResolveDto, StartWorkDto,
@@ -37,32 +38,6 @@ interface ComplaintRow {
   reopen_count: number;
   created_at: Date;
   resolved_within_window: boolean;
-}
-
-/** SQL predicate restricting complaints to what the caller may see. Alias `c`. */
-function scopeFilter(user: AuthUser, params: unknown[]): string {
-  const p = (v: unknown) => {
-    params.push(v);
-    return `$${params.length}`;
-  };
-  switch (user.role) {
-    case Role.WEB_ADMIN:
-      return 'TRUE';
-    case Role.DISTRICT_ADMIN:
-      return `c.district_id = ${p(user.districtId)}`;
-    case Role.SUB_ADMIN:
-      return `c.ulb_id = ${p(user.ulbId)}`;
-    case Role.SUPERVISOR: {
-      const me = p(user.id);
-      return `(c.supervisor_id = ${me} OR c.area_id IN (SELECT id FROM areas WHERE supervisor_id = ${me}))`;
-    }
-    case Role.WORKER:
-      return `c.worker_id = ${p(user.id)}`;
-    case Role.CITIZEN:
-      return `c.citizen_id = ${p(user.id)}`;
-    default:
-      return 'FALSE';
-  }
 }
 
 const VIEW_COLUMNS = `

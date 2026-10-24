@@ -1,0 +1,42 @@
+'use client';
+
+import { Badge, Button, Card, List, Space, Typography } from 'antd';
+import Link from 'next/link';
+import { useState } from 'react';
+import { api, qs, useApi } from '@/lib/client/api';
+import { fmtDateTime } from '@/lib/client/format';
+
+interface Note { id: string; type: string; complaintId: string | null; title: string; body: string; readAt: string | null; createdAt: string }
+
+export default function NotificationsPage() {
+  const [page, setPage] = useState(1);
+  const { data, mutate } = useApi<{ total: number; items: Note[] }>(`/notifications${qs({ page, pageSize: 20 })}`);
+  const markRead = async (n: Note) => {
+    if (!n.readAt) {
+      await api(`/notifications/${n.id}/read`, { method: 'POST', body: {} });
+      await mutate();
+    }
+  };
+  return (
+    <>
+      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+        <Typography.Title level={3} style={{ marginTop: 0 }}>Notifications</Typography.Title>
+        <Button onClick={async () => { await api('/notifications/read-all', { method: 'POST', body: {} }); await mutate(); }}>Mark all read</Button>
+      </Space>
+      <Card size="small">
+        <List<Note> dataSource={data?.items} data-testid="notifications"
+          pagination={{ current: page, pageSize: 20, total: data?.total, onChange: setPage, hideOnSinglePage: true }}
+          renderItem={(n) => (
+            <List.Item onClick={() => markRead(n)} style={{ cursor: 'pointer' }}
+              actions={n.complaintId ? [<Link key="open" href={`/complaints/${n.complaintId}`}>Open</Link>] : []}>
+              <List.Item.Meta
+                avatar={<Badge dot={!n.readAt} />}
+                title={<span style={{ fontWeight: n.readAt ? 400 : 600 }}>{n.title}</span>}
+                description={<>{n.body} <Typography.Text type="secondary">· {fmtDateTime(n.createdAt)}</Typography.Text></>}
+              />
+            </List.Item>
+          )} />
+      </Card>
+    </>
+  );
+}

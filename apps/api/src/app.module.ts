@@ -15,6 +15,7 @@ import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { JobsService } from './modules/jobs/jobs.service';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { SlaModule } from './modules/sla/sla.module';
 import { MastersModule } from './modules/masters/masters.module';
 import { MediaModule } from './modules/media/media.module';
@@ -59,6 +60,7 @@ class HealthController {
     MastersModule,
     ComplaintsModule,
     SlaModule,
+    ReportsModule,
   ],
   controllers: [HealthController],
   providers: [

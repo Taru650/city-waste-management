@@ -9,9 +9,9 @@ security) pass in CI. The next milestone does not start until then.
 | M2 | Masters (LGD codes, ward polygons, areas) and complaint lifecycle | ✅ Done |
 | M3 | Camera-only media pipeline (capture signature, upload, compression) | ✅ Done |
 | M4 | SLA timers, escalation, auto-close job, push notifications | ✅ Done |
-| M5 | Reports and analytics (pendency, ageing, disposal time, quality, exports) | ⏭ Next |
-| M6 | Next.js web portal (admins, supervisors) | Planned |
-| M7 | Flutter Citizen app and Staff app | Planned |
+| M5 | Reports and analytics (pendency, ageing, disposal time, quality, exports) | ✅ Done (with M6) |
+| M6 | Next.js web portal (admins, supervisors) | ✅ Done |
+| M7 | Flutter Citizen app and Staff app | ⏭ Next |
 | M8 | Event zones, worker offline sync, load test (k6, 10× peak) | Planned |
 | M9 | Security sign-off: DAST (OWASP ZAP), MobSF, external pentest, CERT-In audit, pilot ULB | Planned |
 
@@ -76,15 +76,25 @@ security) pass in CI. The next milestone does not start until then.
 
 **Exit criteria (met):** `test/sla` (8), `test/notifications` (7), `test/mfa-recovery` (7), `test/mail` (2), `test/security/notifications` (6), push sender and template unit tests; full suite 326 tests, green on three consecutive runs.
 
-## M5 — Reports and analytics
-- Materialized views: received/resolved/pending, ageing buckets, date-wise pendency, disposal time (avg/median/P90), SLA compliance, quality (rating, reopen rate, geofence flags, ward mismatch), type mix, heatmap, staff performance, cross-ward complaints.
-- Excel / PDF export.
-- **Tests:** figures match fixtures; District Admin sees only their district; exports respect scope.
+## M5 + M6 — Reports and the web portal ✅
+Built together on request, so reports were shaped by real screens rather than tests alone.
 
-## M6 — Web portal (Next.js)
-- Login with MFA, httpOnly cookie session via a BFF route, CSRF protection.
-- Masters admin (ward GeoJSON/KML upload with map preview), staff management, complaint inbox and map, dashboards.
-- **Tests:** Playwright e2e, CSP check, no tokens in browser storage.
+**Reports API** (`/reports/*`, Web/District/Sub Admin and supervisors; same jurisdiction predicate as the complaint inbox)
+- Summary: received / resolved / pending / rejected / duplicate / past-SLA / escalated; disposal rate; average, median and P90 disposal hours; assignment lag; SLA compliance; average rating, % satisfied, reopen rate, proofs captured > 100 m away, ward-mismatch rate; complaint-type mix.
+- Pendency ageing (< 1, 1–3, 3–7, 7–15, > 15 days) grouped by district / ULB / ward / type / supervisor.
+- Date-wise trend: received, resolved and **pending at day end rebuilt from the append-only event history** (correct across reopens).
+- Breakdowns by district / ULB / ward / type / supervisor / worker; hotspot grid (~110 m).
+- Exports: Excel and CSV (UTF-8 BOM for Hindi), spreadsheet formula injection neutralised, no citizen identity, 50,000-row cap with a clear error, every export audited. IST calendar days; range capped at 366 days.
+
+**Web portal** (`apps/web`, Next.js 16 + antd 6 + ECharts + Leaflet)
+- Server-side session layer (BFF): the browser never receives an access or refresh token; httpOnly + Secure + SameSite=Strict cookies; refresh in `proxy.ts` and the API gateway with single-flight protection against rotation-reuse lockouts.
+- Login with TOTP; first-time authenticator setup with QR and one-time recovery codes; recovery-code sign-in; forced temporary-password change; forgot/reset password; workers and citizens are directed to the mobile apps.
+- Dashboard: KPI tiles, trend, type mix, ageing, performance table by dimension, hotspot map, exports, print-to-PDF.
+- Complaints: filterable inbox (status, past SLA, escalated, ward, type), detail with evidence gallery (signed S3 URLs), map with proof locations, timeline, feedback; assign / reassign / resolve (remark only on web) / reject / merge duplicate.
+- Masters: districts and ULBs with LGD codes, wards with GeoJSON boundary upload and map preview, areas and supervisors, complaint-type SLAs.
+- Staff: create one level down (temporary password shown once), enable/disable, helpdesk password reset, MFA reset. Notifications inbox; account page (language, recovery codes, sign out everywhere).
+
+**Exit criteria (met):** API `test/reports` (11 exact-number tests), new masters/users endpoints; portal unit tests (45: CSRF, proxy rules incl. bypass attempts, single-flight refresh, open-redirect guard, GeoJSON); **30 Playwright tests in a real browser against the real API**, green on repeated runs, including 8 portal security tests and a time-zone regression test.
 
 ## M7 — Flutter apps
 - Citizen: register, file with in-app camera only, track, before/after, feedback.

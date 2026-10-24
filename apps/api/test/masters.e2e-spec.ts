@@ -88,4 +88,17 @@ describe('Masters: districts, ULBs, wards, areas (M2)', () => {
     await ctx.http().patch(api(`/masters/complaint-types/${other.id}`)).set(bearer(subAdmin)).send({ slaHours: 10 }).expect(403);
     await ctx.http().patch(api(`/masters/complaint-types/${other.id}`)).set(bearer(webAdmin)).send({ slaHours: 72 }).expect(200);
   });
+
+  it('ward boundaries as GeoJSON for maps, scoped; inactive types listed for Web Admin', async () => {
+    const fc = await ctx.http().get(api(`/masters/ulbs/${j.ulbId}/boundaries`)).set(bearer(subAdmin)).expect(200);
+    expect(fc.body.type).toBe('FeatureCollection');
+    expect(fc.body.features[0]).toEqual(expect.objectContaining({ type: 'Feature', geometry: expect.objectContaining({ type: 'MultiPolygon' }) }));
+    await ctx.http().get(api(`/masters/ulbs/${other.ulbId}/boundaries`)).set(bearer(subAdmin)).expect(403);
+    const sup = await tokenFor(ctx, await createUser(ctx, Role.SUPERVISOR, j));
+    await ctx.http().get(api(`/masters/ulbs/${j.ulbId}/boundaries`)).set(bearer(sup)).expect(200);
+    await ctx.http().get(api(`/masters/ulbs/${other.ulbId}/boundaries`)).set(bearer(sup)).expect(403);
+    const all = await ctx.http().get(api('/masters/complaint-types/all')).set(bearer(webAdmin)).expect(200);
+    expect(all.body.length).toBeGreaterThanOrEqual(8);
+    await ctx.http().get(api('/masters/complaint-types/all')).set(bearer(subAdmin)).expect(403);
+  });
 });

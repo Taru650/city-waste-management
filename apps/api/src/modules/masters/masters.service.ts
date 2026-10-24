@@ -48,6 +48,23 @@ export class MastersService {
     );
   }
 
+  /** Ward boundaries of a ULB as a GeoJSON FeatureCollection (maps in the portal). */
+  async wardBoundaries(user: AuthUser, ulbId: string) {
+    if (user.role !== Role.SUPERVISOR) await assertCanManageUlb(this.ds, user, ulbId);
+    else if (user.ulbId !== ulbId) throw new ForbiddenException('Outside your jurisdiction');
+    const rows = await this.ds.query(
+      `SELECT id, number, name, area_id, ST_AsGeoJSON(geom, 6)::json AS geometry
+         FROM wards WHERE ulb_id = $1 AND geom IS NOT NULL ORDER BY number`,
+      [ulbId],
+    );
+    return {
+      type: 'FeatureCollection',
+      features: rows.map((r: { id: string; number: number; name: string | null; area_id: string | null; geometry: object }) => ({
+        type: 'Feature', geometry: r.geometry, properties: { id: r.id, number: r.number, name: r.name, areaId: r.area_id },
+      })),
+    };
+  }
+
   /** Reverse-geocode a GPS point to ward → ULB → district using ward polygons. */
   async locate(lat: number, lng: number) {
     const [row] = await this.ds.query(

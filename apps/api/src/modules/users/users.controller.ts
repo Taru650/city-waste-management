@@ -20,6 +20,12 @@ export class UsersController {
     return this.users.createStaff(user, dto, client.ip);
   }
 
+  @Roles(Role.SUB_ADMIN, Role.SUPERVISOR)
+  @Get('workers')
+  workers(@CurrentUser() user: AuthUser) {
+    return this.users.workers(user);
+  }
+
   @Get()
   list(@CurrentUser() user: AuthUser, @Query() q: ListUsersQuery) {
     return this.users.list(user, q.role);

@@ -78,6 +78,22 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
 
+  # Officials' web portal. Must sit behind the TLS/WAF proxy (nginx), never exposed directly:
+  # it forwards the client IP from X-Forwarded-For to the API for rate limits and audit logs.
+  web:
+    build: ../apps/web
+    environment:
+      API_URL: http://api:3000/api/v1
+      PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:3001}
+      MEDIA_ORIGINS: ${MEDIA_PUBLIC_ORIGIN:-http://localhost:9000}
+      MAP_TILE_URL: ${MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+    depends_on: [api]
+    ports: ["127.0.0.1:3001:3001"]
+    read_only: true
+    tmpfs: [/tmp, /app/.next/cache]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+
   # Background jobs: video transcoding, push dispatch, SLA sweep, auto-close, media purge.
   # Scale with `docker compose up --scale worker=N` for peak events.
   worker:

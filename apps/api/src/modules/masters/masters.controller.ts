@@ -36,6 +36,18 @@ export class MastersController {
     return this.masters.listComplaintTypes();
   }
 
+  @ApiBearerAuth() @Roles(Role.WEB_ADMIN)
+  @Get('complaint-types/all')
+  allComplaintTypes() {
+    return this.masters.listComplaintTypes(true);
+  }
+
+  @ApiBearerAuth() @Roles(Role.WEB_ADMIN, Role.DISTRICT_ADMIN, Role.SUB_ADMIN, Role.SUPERVISOR)
+  @Get('ulbs/:id/boundaries')
+  boundaries(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string) {
+    return this.masters.wardBoundaries(user, id);
+  }
+
   @ApiBearerAuth() @Get('locate')
   locate(@Query() q: LocateQuery) {
     return this.masters.locate(q.lat, q.lng);

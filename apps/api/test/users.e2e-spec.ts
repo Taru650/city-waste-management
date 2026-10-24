@@ -78,4 +78,18 @@ describe('Staff management and helpdesk (M1)', () => {
       await ctx.http().patch(api(`/users/${id}/status`)).set(bearer(sa)).send({ status: 'DISABLED' }).expect(404);
     }
   });
+
+  it('supervisors list active workers of their own ULB for assignment', async () => {
+    const sup = await tokenFor(ctx, await createUser(ctx, Role.SUPERVISOR, j));
+    const mine = await createUser(ctx, Role.WORKER, j);
+    const theirs = await createUser(ctx, Role.WORKER, other);
+    const res = await ctx.http().get(api('/users/workers')).set(bearer(sup)).expect(200);
+    const ids = res.body.map((w: { id: string }) => w.id);
+    expect(ids).toContain(mine.id);
+    expect(ids).not.toContain(theirs.id);
+    expect(res.body[0]).toEqual(expect.objectContaining({ openTasks: expect.any(Number) }));
+    expect(JSON.stringify(res.body)).not.toContain(mine.mobile);
+    // supervisors still cannot use the admin staff list
+    await ctx.http().get(api('/users')).set(bearer(sup)).expect(403);
+  });
 });

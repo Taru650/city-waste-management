@@ -63,6 +63,19 @@ secret scanning (gitleaks) and container scanning (Trivy).
 | MFA reset | manager in the same jurisdiction only; signs the user out; Web Admin via audited break-glass CLI on the server | `mfa-recovery.e2e` |
 | Redis | password-protected, private network (compose); tests use a dedicated DB that the harness refuses to mix up | `infra/docker-compose.yml`, `global-setup.ts` |
 
+## Web portal (apps/web)
+| Control | Implementation | Test |
+|---|---|---|
+| No tokens in the browser | BFF route handlers keep access/refresh tokens in httpOnly, Secure, SameSite=Strict cookies; token-issuing API endpoints are not reachable through the gateway | `e2e/security` cookies + gateway tests, `proxy-rules.test` |
+| Gateway bypasses | path normalised like Express (case, duplicate/trailing slashes, `.`/`..`, encoded slashes) before the blocklist | `proxy-rules.test`, `e2e/security` |
+| CSRF | SameSite=Strict plus custom header plus Origin / Sec-Fetch-Site check on every state change | `csrf.test`, `e2e/security` |
+| XSS | React escaping; CSP `script-src 'self' 'nonce-…' 'strict-dynamic'` with a fresh nonce per request; no `unsafe-inline`/`unsafe-eval` for scripts | `e2e/security` CSP + stored-XSS tests |
+| Clickjacking / sniffing | `frame-ancestors 'none'`, X-Frame-Options DENY, nosniff, no-referrer, Permissions-Policy, COOP | `e2e/security` |
+| Open redirect | post-login `next` restricted to same-origin paths | `safe-next.test`, `e2e/security` |
+| Session refresh races | single-flight refresh + 30 s result reuse so parallel requests never trigger refresh-token reuse detection | `session.test`, `e2e/security` parallel refresh |
+| Export safety | formula injection neutralised (CSV/XLSX), no citizen identity, row cap, audited | `report-range.spec`, `test/reports` |
+| Report scope | reports use the same jurisdiction predicate as the inbox; filtering by another ULB's id returns nothing | `test/reports` scope tests |
+
 ## Input and transport (OWASP A03, A05, API4)
 | Control | Implementation | Test |
 |---|---|---|
@@ -83,4 +96,8 @@ secret scanning (gitleaks) and container scanning (Trivy).
 - **DAST and pentest:** OWASP ZAP, MobSF, external pentest and CERT-In audit are scheduled in M9.
 - **CAPTCHA:** server-side verifier is implemented; the apps must send the token (M6/M7).
 - **Device attestation:** device keys are accepted without Play Integrity / App Attest verification (`integrity_verdict = UNVERIFIED`). A rooted phone could extract its key and sign arbitrary files. Add Play Integrity verification at device registration before go-live (M7).
+- **Portal styles:** `style-src` allows `'unsafe-inline'` (antd injects CSS at runtime; Leaflet sets style attributes). Script injection remains blocked by the nonce CSP.
+- **Portal replicas:** refresh single-flight is per process; run one portal replica or use sticky sessions until a shared lock is added.
+- **Portal exposure:** the portal forwards `X-Forwarded-For` to the API; it must only be reachable through the TLS/WAF proxy, never directly.
+- **Map tiles:** the default OpenStreetMap tile server is for light use only (OSM tile usage policy). Production needs MapmyIndia/Bhuvan or self-hosted tiles via `MAP_TILE_URL`.
 - **Bucket policy:** the bucket must be private with no public-read policy; this is deployment configuration (compose sets it for MinIO) and is not covered by tests.

@@ -53,11 +53,16 @@ export async function createTestApp(opts: { realMail?: boolean } = {}): Promise<
 export const api = (path: string) => `/${API_PREFIX}${path}`;
 
 let mobileCounter = 0;
-/** Unique valid Indian mobile per call (process id keeps parallel runs apart). */
+/**
+ * Unique valid Indian mobile per call within a test run: milliseconds (mod 10^6) plus a
+ * per-file counter. Files run sequentially, so two files never share a millisecond; inside a
+ * file the counter separates calls made in the same millisecond. (A random suffix used to
+ * collide by the birthday paradox across ~400 users per run.)
+ */
 export function uniqueMobile(): string {
   mobileCounter += 1;
-  const n = (process.pid % 1000) * 100000 + mobileCounter + Math.floor(Math.random() * 1000) * 100;
-  return `9${String(n % 1_000_000_000).padStart(9, '0')}`;
+  const n = (Date.now() % 1_000_000) * 1000 + (mobileCounter % 1000);
+  return `9${String(n).padStart(9, '0')}`;
 }
 
 /** Square polygon of `size` degrees with its south-west corner at (lat, lng). */

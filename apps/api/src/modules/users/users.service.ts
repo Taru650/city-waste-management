@@ -115,6 +115,18 @@ export class UsersService {
     }));
   }
 
+  /** Active workers of the caller's ULB, for the assignment dropdown (supervisors and Sub Admins). */
+  async workers(actor: AuthUser) {
+    return this.ds.query(
+      `SELECT u.id, u.name, u.area_id AS "areaId", a.name AS "areaName",
+              (SELECT count(*)::int FROM complaints c WHERE c.worker_id = u.id AND c.status IN ('ASSIGNED','WORK_IN_PROGRESS','REOPENED')) AS "openTasks"
+         FROM users u LEFT JOIN areas a ON a.id = u.area_id
+        WHERE u.role = 'WORKER' AND u.status = 'ACTIVE' AND u.ulb_id = $1
+        ORDER BY u.name`,
+      [actor.ulbId],
+    );
+  }
+
   async setStatus(actor: AuthUser, targetId: string, dto: UpdateStatusDto, ip?: string) {
     const target = await this.loadManageable(actor, targetId);
     await this.ds.transaction(async (m) => {
