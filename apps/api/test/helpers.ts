@@ -36,12 +36,12 @@ export interface TestCtx {
   http: () => ReturnType<typeof request>;
 }
 
-export async function createTestApp(): Promise<TestCtx> {
+/** `realMail` keeps the configured transport (SMTP tests); otherwise mail is captured in memory. */
+export async function createTestApp(opts: { realMail?: boolean } = {}): Promise<TestCtx> {
   const mail = new CapturingMail();
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-    .overrideProvider(MAIL_SERVICE)
-    .useValue(mail)
-    .compile();
+  const builder = Test.createTestingModule({ imports: [AppModule] });
+  if (!opts.realMail) builder.overrideProvider(MAIL_SERVICE).useValue(mail);
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false, logger: false });
   configureApp(app, app.get<AppConfig>(APP_CONFIG));
   // Listen once: otherwise supertest opens/closes the shared server per request, which races

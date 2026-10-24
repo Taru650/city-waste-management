@@ -6,11 +6,13 @@ import { AuthUser } from '../../common/auth-user';
 import { mutateReturning } from '../../common/db';
 import { ComplaintStatus, Role, WardSource } from '../../common/enums';
 import { MediaService, MediaStage } from '../media/media.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { templates } from '../notifications/templates';
 import { buildComplaintNo, formatComplaintNo, normalizeComplaintNo, SEQ_MAX } from './complaint-number';
 import {
   AssignDto, CreateComplaintDto, DuplicateDto, FeedbackDto, GeoPointDto, ListComplaintsQuery, RejectDto, ResolveDto, StartWorkDto,
 } from './dto/complaints.dto';
-import { Actor, ComplaintAction, InvalidTransitionError, transition } from './state-machine';
+import { Actor, ComplaintAction, InvalidTransitionError, transition, TransitionAction } from './state-machine';
 
 export const MAX_COMPLAINTS_PER_DAY = 10;
 /** A manually chosen ward further than this from the GPS point is flagged for the supervisor. */
@@ -71,7 +73,7 @@ const VIEW_COLUMNS = `
   c.type_id, t.code AS type_code, t.name_en AS type_name_en, t.name_hi AS type_name_hi,
   c.supervisor_id, sv.name AS supervisor_name, c.worker_id, wk.name AS worker_name,
   c.duplicate_of, c.reopen_count, c.escalated, c.resolution_remark,
-  c.sla_due_at, c.assigned_at, c.resolved_at, c.closed_at, c.created_at, c.updated_at,
+  c.sla_due_at, c.sla_breached_at, c.escalated_at, c.assigned_at, c.resolved_at, c.closed_at, c.created_at, c.updated_at,
   (c.sla_due_at < COALESCE(c.resolved_at, now())) AS sla_breached`;
 
 const VIEW_JOINS = `
@@ -107,6 +109,8 @@ function toView(r: any) {
     resolutionRemark: r.resolution_remark,
     slaDueAt: r.sla_due_at,
     slaBreached: r.sla_breached,
+    slaBreachedAt: r.sla_breached_at,
+    escalatedAt: r.escalated_at,
     assignedAt: r.assigned_at,
     resolvedAt: r.resolved_at,
     closedAt: r.closed_at,
@@ -117,7 +121,11 @@ function toView(r: any) {
 
 @Injectable()
 export class ComplaintsService {
-  constructor(private readonly ds: DataSource, private readonly media: MediaService) {}
+  constructor(
+    private readonly ds: DataSource,
+    private readonly media: MediaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async create(citizen: AuthUser, dto: CreateComplaintDto) {
     const [{ count }] = await this.ds.query(
@@ -132,7 +140,7 @@ export class ComplaintsService {
 
     const ward = await this.resolveWard(dto);
 
-    return this.ds.transaction(async (m) => {
+    const view = await this.ds.transaction(async (m) => {
       const [{ year }] = await m.query(`SELECT EXTRACT(year FROM now() AT TIME ZONE 'Asia/Kolkata')::int AS year`);
       const [{ last_value: seq }] = await m.query(
         `INSERT INTO complaint_seq (ulb_id, year, last_value) VALUES ($1, $2, 1)
@@ -165,8 +173,13 @@ export class ComplaintsService {
         await m.query(`UPDATE complaints SET status = $2, supervisor_id = $3, assigned_at = now() WHERE id = $1`, [row.id, to, supervisorId]);
         await this.event(m, row.id, ComplaintAction.ROUTE, ComplaintStatus.PENDING, to, null, null, { supervisorId });
       }
+      await this.notifications.notify(m, [citizen.id], templates.registered(complaintNo), row.id);
+      const staff = supervisorId ? [supervisorId] : await this.notifications.subAdminsOf(m, ward.ulb_id);
+      await this.notifications.notify(m, staff, templates.newInArea(complaintNo), row.id);
       return this.view(m, row.id);
     });
+    await this.notifications.kick();
+    return view;
   }
 
   async list(user: AuthUser, q: ListComplaintsQuery) {
@@ -182,6 +195,8 @@ export class ComplaintsService {
     if (q.typeId) add('c.type_id = ?', q.typeId);
     if (q.from) add('c.created_at >= ?', q.from);
     if (q.to) add('c.created_at < ?', q.to);
+    if (q.escalated !== undefined) add('c.escalated = ?', q.escalated);
+    if (q.overdue) where.push(`c.status IN ('PENDING','ASSIGNED','WORK_IN_PROGRESS','REOPENED') AND c.sla_due_at < now()`);
     const whereSql = where.join(' AND ');
     const [{ total }] = await this.ds.query(`SELECT count(*)::int AS total FROM complaints c WHERE ${whereSql}`, params);
     const rows = await this.ds.query(
@@ -300,7 +315,8 @@ export class ComplaintsService {
         const escalate = c.reopen_count + 1 > MAX_REOPENS;
         await m.query(
           `UPDATE complaints SET status = $2, reopen_count = reopen_count + 1, escalated = escalated OR $3,
-                  resolved_at = NULL, sla_due_at = now() + (SELECT make_interval(hours => sla_hours) FROM complaint_types WHERE id = $4)
+                  resolved_at = NULL, sla_breached_at = NULL, escalated_at = NULL,
+                  sla_due_at = now() + (SELECT make_interval(hours => sla_hours) FROM complaint_types WHERE id = $4)
             WHERE id = $1`,
           [c.id, to, escalate, c.type_id],
         );
@@ -340,14 +356,15 @@ export class ComplaintsService {
         m,
         `UPDATE complaints SET status = 'CLOSED', closed_at = now()
           WHERE status = 'RESOLVED' AND resolved_at < now() - make_interval(days => $1)
-          RETURNING id`,
+          RETURNING id, complaint_no, citizen_id`,
         [FEEDBACK_WINDOW_DAYS],
       );
       for (const r of rows) {
         await this.event(m, r.id, ComplaintAction.AUTO_CLOSE, ComplaintStatus.RESOLVED, ComplaintStatus.CLOSED, null, 'No feedback within window');
+        await this.notifications.notify(m, [r.citizen_id], templates.closed(r.complaint_no), r.id);
       }
       return rows.length;
-    });
+    }).finally(() => this.notifications.kick());
   }
 
   // ---- internals ----
@@ -359,10 +376,10 @@ export class ComplaintsService {
   private async act(
     user: AuthUser,
     id: string,
-    action: Exclude<ComplaintAction, ComplaintAction.CREATE | ComplaintAction.ROUTE | ComplaintAction.AUTO_CLOSE>,
+    action: Exclude<TransitionAction, ComplaintAction.ROUTE | ComplaintAction.AUTO_CLOSE>,
     apply: (m: EntityManager, c: ComplaintRow, to: ComplaintStatus) => Promise<{ remark?: string; meta?: object }>,
   ) {
-    return this.ds.transaction(async (m) => {
+    const view = await this.ds.transaction(async (m) => {
       const params: unknown[] = [id, FEEDBACK_WINDOW_DAYS];
       const [c]: ComplaintRow[] = await m.query(
         `SELECT c.id, c.status, c.citizen_id, c.district_id, c.ulb_id, c.area_id, c.supervisor_id, c.worker_id,
@@ -383,8 +400,49 @@ export class ComplaintsService {
       const { remark, meta } = await apply(m, c, to);
       await m.query(`UPDATE complaints SET updated_at = now() WHERE id = $1`, [c.id]);
       await this.event(m, c.id, action, c.status, to, user.id, remark ?? null, meta);
+      await this.notifyTransition(m, action, c);
       return this.view(m, c.id);
     });
+    await this.notifications.kick();
+    return view;
+  }
+
+  /** Who hears about each status change. Texts carry no personal data (see templates.ts). */
+  private async notifyTransition(m: EntityManager, action: ComplaintAction, before: ComplaintRow) {
+    const [after] = await m.query(
+      `SELECT complaint_no, citizen_id, supervisor_id, worker_id, ulb_id, escalated FROM complaints WHERE id = $1`,
+      [before.id],
+    );
+    const no: string = after.complaint_no;
+    const n = (users: (string | null)[], content: ReturnType<typeof templates.registered>) =>
+      this.notifications.notify(m, users, content, before.id);
+    switch (action) {
+      case ComplaintAction.ASSIGN:
+        if (after.worker_id && after.worker_id !== before.worker_id) {
+          await n([after.worker_id], templates.taskAssigned(no));
+          if (!before.worker_id) await n([after.citizen_id], templates.assigned(no));
+        }
+        if (after.supervisor_id && after.supervisor_id !== before.supervisor_id) await n([after.supervisor_id], templates.newInArea(no));
+        break;
+      case ComplaintAction.START:
+        await n([after.citizen_id], templates.started(no));
+        break;
+      case ComplaintAction.RESOLVE:
+        await n([after.citizen_id], templates.resolved(no));
+        break;
+      case ComplaintAction.REJECT:
+        await n([after.citizen_id], templates.rejected(no));
+        break;
+      case ComplaintAction.MARK_DUPLICATE:
+        await n([after.citizen_id], templates.duplicate(no));
+        break;
+      case ComplaintAction.REOPEN:
+        await n([after.supervisor_id, after.worker_id], templates.reopened(no));
+        if (after.escalated) await n(await this.notifications.subAdminsOf(m, after.ulb_id), templates.escalated(no));
+        break;
+      default:
+        break;
+    }
   }
 
   private async event(

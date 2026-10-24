@@ -1,5 +1,6 @@
 import { CreateBucketCommand, S3Client } from '@aws-sdk/client-s3';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
+import IORedis from 'ioredis';
 import { existsSync } from 'fs';
 import { Client } from 'pg';
 import './test-env';
@@ -40,6 +41,33 @@ async function ensureS3() {
     });
 }
 
+/** Redis for BullMQ: starts a local redis-server if none is running, then empties the test DB. */
+async function ensureRedis() {
+  const url = new URL(process.env.REDIS_URL!);
+  if (url.pathname !== '/15') throw new Error('Tests must use Redis DB 15 (REDIS_URL=redis://host:port/15)');
+  const tryPing = async () => {
+    const r = new IORedis(url.toString(), { lazyConnect: true, maxRetriesPerRequest: 0, retryStrategy: () => null });
+    try {
+      await r.connect();
+      return r;
+    } catch {
+      r.disconnect();
+      return null;
+    }
+  };
+  let redis = await tryPing();
+  if (!redis) {
+    spawnSync('redis-server', ['--daemonize', 'yes', '--bind', url.hostname, '--port', url.port || '6379', '--save', ''], { stdio: 'ignore' });
+    for (let i = 0; i < 40 && !redis; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      redis = await tryPing();
+    }
+    if (!redis) throw new Error(`No Redis at ${url.host}`);
+  }
+  await redis.flushdb();
+  redis.disconnect();
+}
+
 /** Fresh database per test run, schema built from the real migrations. */
 export default async function globalSetup() {
   const url = new URL(process.env.DATABASE_URL!);
@@ -57,4 +85,5 @@ export default async function globalSetup() {
   await ds.destroy();
 
   await ensureS3();
+  await ensureRedis();
 }

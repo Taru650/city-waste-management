@@ -8,8 +8,8 @@ security) pass in CI. The next milestone does not start until then.
 | M1 | API foundation, auth, sessions, staff hierarchy | ✅ Done |
 | M2 | Masters (LGD codes, ward polygons, areas) and complaint lifecycle | ✅ Done |
 | M3 | Camera-only media pipeline (capture signature, upload, compression) | ✅ Done |
-| M4 | SLA timers, escalation, auto-close job, push notifications | ⏭ Next |
-| M5 | Reports and analytics (pendency, ageing, disposal time, quality, exports) | Planned |
+| M4 | SLA timers, escalation, auto-close job, push notifications | ✅ Done |
+| M5 | Reports and analytics (pendency, ageing, disposal time, quality, exports) | ⏭ Next |
 | M6 | Next.js web portal (admins, supervisors) | Planned |
 | M7 | Flutter Citizen app and Staff app | Planned |
 | M8 | Event zones, worker offline sync, load test (k6, 10× peak) | Planned |
@@ -62,10 +62,19 @@ security) pass in CI. The next milestone does not start until then.
 
 **Exit criteria (met):** `test/media` (14), `test/security/media` (31), media unit tests (processor, manifest, magic bytes, clamd) green; full suite 264 tests.
 
-## M4 — SLA, escalation, notifications
-- BullMQ + Redis: SLA breach → supervisor; 2× SLA → Sub Admin; nightly auto-close and orphan-media purge; move video transcoding from the in-process queue to BullMQ workers.
-- FCM push on every status change; in-app notification list.
-- **Tests:** timers fire, idempotent jobs, no notifications leak other citizens' data.
+## M4 — SLA, escalation, notifications ✅
+**Delivered**
+- **Background jobs on BullMQ + Redis.** `PROCESS_ROLE=api|worker|all`; `dist/worker.js` runs jobs without HTTP, so workers scale separately for peak events (`docker compose up --scale worker=N`).
+- **SLA sweeper** (every minute): past deadline → `SLA_BREACH` timeline event + supervisor/worker alert (Sub Admins if unrouted); at 2× SLA → `ESCALATE`, `escalated=true`, Sub Admins alerted. Idempotent, survives restarts; a reopen restarts the clock. Filters `?overdue=true`, `?escalated=true`.
+- **Scheduled maintenance:** auto-close unrated complaints after 7 days (hourly), purge orphan media (hourly), push-dispatch safety net (30 s).
+- **Video transcoding moved to BullMQ:** 3 attempts with exponential backoff for infrastructure errors; bad input rejected at once; owner notified on rejection.
+- **Notifications:** in-app inbox (list, unread count, mark read / all read) written in the same transaction as the status change; Hindi by default, English by preference (`PATCH /auth/me/preferences`). Texts carry only the complaint number.
+- **Push:** FCM HTTP v1 with service-account OAuth (no SDK); outbox dispatch with retry (5 attempts), unregistered tokens dropped; tokens follow the last account signed in on a phone; removed on logout-all / password reset / disable.
+- **Email over SMTP** (nodemailer 10), TLS required in production; mail outages do not change the forgot-password response.
+- **MFA recovery:** 10 one-time recovery codes at enrolment (hashed), `POST /auth/mfa/recover`, regenerate with a TOTP code; manager-level `POST /users/:id/reset-mfa`; break-glass CLI for Web Admins (`RESET_ADMIN_MFA_MOBILE=… npm run seed`), audited.
+- **Readiness probe** `GET /health/ready` (DB + Redis).
+
+**Exit criteria (met):** `test/sla` (8), `test/notifications` (7), `test/mfa-recovery` (7), `test/mail` (2), `test/security/notifications` (6), push sender and template unit tests; full suite 326 tests, green on three consecutive runs.
 
 ## M5 — Reports and analytics
 - Materialized views: received/resolved/pending, ageing buckets, date-wise pendency, disposal time (avg/median/P90), SLA compliance, quality (rating, reopen rate, geofence flags, ward mismatch), type mix, heatmap, staff performance, cross-ward complaints.

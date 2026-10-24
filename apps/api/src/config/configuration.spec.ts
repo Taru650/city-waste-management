@@ -21,6 +21,8 @@ describe('loadConfig', () => {
     [{ PII_ENCRYPTION_KEY: Buffer.alloc(16).toString('base64') }, /32 bytes/],
     [{ DATABASE_URL: '' }, /DATABASE_URL/],
     [{ S3_BUCKET: '' }, /S3_BUCKET/],
+    [{ PROCESS_ROLE: 'both' }, /PROCESS_ROLE/],
+    [{ MAIL_TRANSPORT: 'smtp' }, /SMTP_URL/],
   ])('refuses to boot with %p', (override, msg) => {
     expect(() => loadConfig({ ...base, ...override })).toThrow(msg);
   });
@@ -28,6 +30,10 @@ describe('loadConfig', () => {
   it('requires CAPTCHA and CORS origins in production', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/CAPTCHA_SECRET/);
     expect(() => loadConfig({ ...base, NODE_ENV: 'production', CAPTCHA_SECRET: 's' })).toThrow(/CORS_ORIGINS/);
-    expect(() => loadConfig({ ...base, NODE_ENV: 'production', CAPTCHA_SECRET: 's', CORS_ORIGINS: 'https://x' })).toThrow(/CLAMAV_HOST/);
+    const prod = { ...base, NODE_ENV: 'production', CAPTCHA_SECRET: 's', CORS_ORIGINS: 'https://x' };
+    expect(() => loadConfig(prod)).toThrow(/CLAMAV_HOST/);
+    expect(() => loadConfig({ ...prod, CLAMAV_HOST: 'clamav' })).toThrow(/MAIL_TRANSPORT=smtp/);
+    expect(() => loadConfig({ ...prod, CLAMAV_HOST: 'clamav', MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtp://mail:25' })).toThrow(/TLS/);
+    expect(() => loadConfig({ ...prod, CLAMAV_HOST: 'clamav', MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtps://u:p@mail:465' })).not.toThrow();
   });
 });

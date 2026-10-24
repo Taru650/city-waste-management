@@ -2,6 +2,7 @@ import {
   BadRequestException, ConflictException, HttpException, HttpStatus, Inject, Injectable, Logger, NotFoundException, OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { Job } from 'bullmq';
 import { createHash } from 'crypto';
 import { DataSource, EntityManager } from 'typeorm';
 import { APP_CONFIG, AppConfig } from '../../config/configuration';
@@ -9,6 +10,9 @@ import { AuthUser } from '../../common/auth-user';
 import { mutateReturning } from '../../common/db';
 import { Role } from '../../common/enums';
 import { AuditService } from '../audit/audit.service';
+import { JobsService, QUEUES } from '../jobs/jobs.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { templates } from '../notifications/templates';
 import { StorageService, UPLOAD_URL_TTL_SECONDS } from '../storage/storage.service';
 import { CaptureManifest, ManifestError, parseDevicePublicKey, verifyManifest } from './capture-manifest';
 import { ALLOWED_TYPES, ConfirmUploadDto, CreateUploadDto, MAX_BYTES, MediaKind } from './dto/media.dto';
@@ -29,6 +33,7 @@ export const CONFIRM_WINDOW_MINUTES = 30;
 export const FUTURE_SKEW_MINUTES = 5;
 export const ORPHAN_HOURS = 24;
 export const MEDIA_GEOFENCE_METERS = 100;
+export const VIDEO_JOB_ATTEMPTS = 3;
 
 interface PendingRow {
   id: string;
@@ -57,10 +62,6 @@ class Rejection extends Error {}
 @Injectable()
 export class MediaService implements OnModuleInit {
   private readonly logger = new Logger('Media');
-  private readonly queue: string[] = [];
-  private running = 0;
-  private readonly concurrency = Number(process.env.MEDIA_VIDEO_CONCURRENCY ?? 1);
-  private idleWaiters: (() => void)[] = [];
 
   constructor(
     private readonly ds: DataSource,
@@ -68,13 +69,20 @@ export class MediaService implements OnModuleInit {
     private readonly processor: MediaProcessor,
     private readonly scanner: MalwareScanner,
     private readonly audit: AuditService,
+    private readonly jobs: JobsService,
+    private readonly notifications: NotificationsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
-  /** Resume videos that were mid-processing when the process stopped. */
-  async onModuleInit() {
-    const rows = await this.ds.query(`SELECT id FROM complaint_media WHERE status = 'PROCESSING' AND kind = 'VIDEO' AND processed_at IS NULL`);
-    rows.forEach((r: { id: string }) => this.enqueue(r.id));
+  onModuleInit() {
+    this.jobs.process(QUEUES.VIDEO, 'transcode', (job) => this.processVideo(job), Number(process.env.MEDIA_VIDEO_CONCURRENCY ?? 1));
+    // Re-enqueue videos whose job was lost (e.g. Redis flushed). Job id = media id, so this is idempotent.
+    this.jobs.onWorkerStart(async () => {
+      const rows = await this.ds.query(
+        `SELECT id FROM complaint_media WHERE status = 'PROCESSING' AND kind = 'VIDEO' AND processed_at IS NULL AND confirmed_at < now() - interval '10 minutes'`,
+      );
+      for (const r of rows) await this.enqueue(r.id);
+    });
   }
 
   async createUpload(user: AuthUser, dto: CreateUploadDto) {
@@ -177,7 +185,7 @@ export class MediaService implements OnModuleInit {
     await this.ds.query(`UPDATE complaint_media SET scan_status = $2 WHERE id = $1`, [media.id, scan.status]);
 
     if (media.kind === MediaKind.VIDEO) {
-      this.enqueue(media.id);
+      await this.enqueue(media.id);
       return this.ownerView(media.id);
     }
     const out = await this.processor.photo(data);
@@ -286,10 +294,9 @@ export class MediaService implements OnModuleInit {
     return rows.length;
   }
 
-  /** Resolves when no video is queued or processing (used by tests and graceful shutdown). */
+  /** Resolves when no video is queued or processing (tests, graceful drain). */
   idle(): Promise<void> {
-    if (this.running === 0 && this.queue.length === 0) return Promise.resolve();
-    return new Promise((resolve) => this.idleWaiters.push(resolve));
+    return this.jobs.waitForIdle([QUEUES.VIDEO]);
   }
 
   // ---- internals ----
@@ -368,25 +375,19 @@ export class MediaService implements OnModuleInit {
   }
 
   private enqueue(id: string) {
-    this.queue.push(id);
-    this.pump();
+    return this.jobs.add(QUEUES.VIDEO, 'transcode', { mediaId: id }, {
+      jobId: `video-${id}`,
+      attempts: VIDEO_JOB_ATTEMPTS,
+      backoff: { type: 'exponential', delay: 5_000 },
+    });
   }
 
-  private pump() {
-    while (this.running < this.concurrency && this.queue.length) {
-      const id = this.queue.shift()!;
-      this.running++;
-      this.processVideo(id)
-        .catch((err) => this.logger.error(`Video ${id} failed: ${err}`))
-        .finally(() => {
-          this.running--;
-          this.pump();
-          if (this.running === 0 && this.queue.length === 0) this.idleWaiters.splice(0).forEach((r) => r());
-        });
-    }
-  }
-
-  private async processVideo(id: string) {
+  /**
+   * Bad input (too long, undecodable) is rejected at once; infrastructure errors are thrown
+   * so BullMQ retries with backoff, and the media is rejected only after the last attempt.
+   */
+  private async processVideo(job: Job<{ mediaId: string }>) {
+    const id = job.data.mediaId;
     const [row] = await this.ds.query(
       `SELECT id, owner_id, staging_key FROM complaint_media WHERE id = $1 AND status = 'PROCESSING' AND kind = 'VIDEO'`,
       [id],
@@ -397,10 +398,16 @@ export class MediaService implements OnModuleInit {
       const out = await this.processor.video(data);
       await this.store(id, row.staging_key, out.main, out.thumb, 'video/mp4', 'mp4', out);
     } catch (err) {
+      const lastAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+      if (!(err instanceof MediaProcessingError) && !lastAttempt) throw err;
       const reason = (err instanceof MediaProcessingError ? err.message : 'Video processing failed').slice(0, 200);
-      await this.ds.query(`UPDATE complaint_media SET status = 'REJECTED', reject_reason = $2, processed_at = now() WHERE id = $1`, [id, reason]);
+      await this.ds.transaction(async (m) => {
+        await m.query(`UPDATE complaint_media SET status = 'REJECTED', reject_reason = $2, processed_at = now() WHERE id = $1`, [id, reason]);
+        await this.audit.log({ actorId: row.owner_id, action: 'MEDIA_REJECTED', entity: 'media', entityId: id, meta: { reason } }, m);
+        await this.notifications.notify(m, [row.owner_id], templates.mediaRejected());
+      });
+      await this.notifications.kick();
       await this.storage.delete(row.staging_key).catch(() => undefined);
-      await this.audit.log({ actorId: row.owner_id, action: 'MEDIA_REJECTED', entity: 'media', entityId: id, meta: { reason } });
     }
   }
 }

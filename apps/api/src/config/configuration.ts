@@ -33,6 +33,11 @@ export interface AppConfig {
     videoPreset: string;
   };
   clamav: { host?: string; port: number };
+  redisUrl: string;
+  /** api = HTTP only; worker = background jobs only; all = both (dev, tests, small pilots). */
+  processRole: 'api' | 'worker' | 'all';
+  mail: { transport: 'log' | 'smtp'; smtpUrl?: string; from: string };
+  fcm: { serviceAccountJson?: string; apiBase: string };
 }
 
 function required(env: NodeJS.ProcessEnv, key: string): string {
@@ -89,7 +94,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       videoPreset: env.VIDEO_PRESET ?? 'slow',
     },
     clamav: { host: env.CLAMAV_HOST || undefined, port: Number(env.CLAMAV_PORT ?? 3310) },
+    redisUrl: env.REDIS_URL ?? 'redis://127.0.0.1:6379',
+    processRole: (env.PROCESS_ROLE ?? 'all') as AppConfig['processRole'],
+    mail: {
+      transport: (env.MAIL_TRANSPORT ?? 'log') as 'log' | 'smtp',
+      smtpUrl: env.SMTP_URL || undefined,
+      from: env.MAIL_FROM ?? 'Swachh Seva <no-reply@example.gov.in>',
+    },
+    fcm: {
+      // Firebase service-account JSON, base64 encoded. Without it pushes are recorded as SKIPPED.
+      serviceAccountJson: env.FCM_SERVICE_ACCOUNT_B64 ? Buffer.from(env.FCM_SERVICE_ACCOUNT_B64, 'base64').toString('utf8') : undefined,
+      apiBase: env.FCM_API_BASE ?? 'https://fcm.googleapis.com',
+    },
   };
+  if (!['api', 'worker', 'all'].includes(config.processRole)) throw new Error('PROCESS_ROLE must be api, worker or all');
+  if (config.mail.transport === 'smtp' && !config.mail.smtpUrl) throw new Error('SMTP_URL is required when MAIL_TRANSPORT=smtp');
   if (config.jwtAccessSecret === config.jwtMfaSecret) {
     throw new Error('JWT_ACCESS_SECRET and JWT_MFA_SECRET must differ');
   }
@@ -97,6 +116,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (!config.captchaSecret) throw new Error('CAPTCHA_SECRET is required in production');
     if (config.corsOrigins.length === 0) throw new Error('CORS_ORIGINS is required in production');
     if (!config.clamav.host) throw new Error('CLAMAV_HOST is required in production (malware scanning of uploads)');
+    if (config.mail.transport !== 'smtp') throw new Error('MAIL_TRANSPORT=smtp is required in production (password reset emails)');
+    if (config.mail.smtpUrl && !/^smtps:\/\/|[?&]requireTLS=true/.test(config.mail.smtpUrl)) {
+      throw new Error('SMTP_URL must use TLS in production (smtps:// or ?requireTLS=true)');
+    }
   }
   return config;
 }

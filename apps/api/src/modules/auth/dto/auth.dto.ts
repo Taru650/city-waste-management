@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
 import { MOBILE_REGEX, NAME_REGEX } from '../../../common/validation';
 import { PASSWORD_MAX } from '../password-policy';
 
@@ -79,4 +79,19 @@ export class ResetPasswordDto {
 
   @ApiProperty() @IsString() @MaxLength(PASSWORD_MAX)
   newPassword: string;
+}
+
+export class MfaRecoverDto extends MfaTokenDto {
+  @ApiProperty({ example: 'ABCDE-FGHJK' }) @IsString() @Length(10, 16)
+  recoveryCode: string;
+}
+
+export class TotpCodeDto {
+  @ApiProperty({ example: '123456' }) @Matches(/^\d{6}$/)
+  code: string;
+}
+
+export class PreferencesDto {
+  @ApiProperty({ enum: ['hi', 'en'] }) @IsIn(['hi', 'en'])
+  preferredLanguage: 'hi' | 'en';
 }

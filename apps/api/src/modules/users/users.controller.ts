@@ -30,6 +30,11 @@ export class UsersController {
     return this.users.setStatus(user, id, dto, client.ip);
   }
 
+  @Post(':id/reset-mfa')
+  resetMfa(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @Client() client: ClientInfo) {
+    return this.users.resetMfa(user, id, client.ip);
+  }
+
   @Post(':id/reset-password')
   resetPassword(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @Client() client: ClientInfo) {
     return this.users.helpdeskResetPassword(user, id, client.ip);

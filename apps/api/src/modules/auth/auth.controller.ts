@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthUser } from '../../common/auth-user';
 import { Client } from '../../common/client-info';
@@ -7,7 +7,8 @@ import { AuthThrottle } from '../../common/throttle';
 import { AuthService } from './auth.service';
 import { CaptchaService } from './captcha.service';
 import {
-  ChangePasswordDto, ForgotPasswordDto, LoginDto, MfaCodeDto, MfaTokenDto, RefreshDto, RegisterCitizenDto, ResetPasswordDto,
+  ChangePasswordDto, ForgotPasswordDto, LoginDto, MfaCodeDto, MfaRecoverDto, MfaTokenDto, PreferencesDto, RefreshDto, RegisterCitizenDto,
+  ResetPasswordDto, TotpCodeDto,
 } from './dto/auth.dto';
 import { ClientInfo, SessionService } from './session.service';
 
@@ -54,6 +55,24 @@ export class AuthController {
   @Post('mfa/verify') @HttpCode(200)
   mfaVerify(@Body() dto: MfaCodeDto, @Client() client: ClientInfo) {
     return this.auth.mfaVerify(dto.mfaToken, dto.code, client);
+  }
+
+  @Public() @AuthThrottle()
+  @Post('mfa/recover') @HttpCode(200)
+  mfaRecover(@Body() dto: MfaRecoverDto, @Client() client: ClientInfo) {
+    return this.auth.mfaRecover(dto.mfaToken, dto.recoveryCode, client);
+  }
+
+  @ApiBearerAuth() @AuthThrottle()
+  @Post('mfa/recovery-codes') @HttpCode(200)
+  regenerateRecoveryCodes(@CurrentUser() user: AuthUser, @Body() dto: TotpCodeDto, @Client() client: ClientInfo) {
+    return this.auth.regenerateRecoveryCodes(user.id, dto.code, client);
+  }
+
+  @ApiBearerAuth() @AllowPendingPasswordChange()
+  @Patch('me/preferences')
+  preferences(@CurrentUser() user: AuthUser, @Body() dto: PreferencesDto) {
+    return this.auth.setPreferences(user.id, dto.preferredLanguage);
   }
 
   @Public() @AuthThrottle()

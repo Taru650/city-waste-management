@@ -50,6 +50,19 @@ secret scanning (gitleaks) and container scanning (Trivy).
 | Ownership | only the capturer can confirm/attach their media; devices cannot be shared across accounts | `security/media` ownership, `media.e2e` devices |
 | Revocation | device revoke, logout-all and password reset invalidate signing keys | `security/media` revocation |
 
+## Notifications, jobs and recovery
+| Control | Implementation | Test |
+|---|---|---|
+| Notification isolation | inbox and mark-read filtered by owner; others' ids → 404 | `security/notifications` |
+| No PII in push | templates carry only the complaint number and status (payload goes to Google, shows on lock screens) | `security/notifications`, `templates.spec` |
+| Shared phones | an FCM token belongs to the last account that registered it; sign-out-everywhere deletes tokens | `security/notifications` |
+| Transactional notify | notifications written in the action's transaction; rolled-back actions notify nobody | `notifications.e2e` |
+| FCM credentials | service-account JWT (RS256) exchanged for short-lived tokens; key only in env/secret store | `push-sender.spec` |
+| Email | SMTP with TLS required in production; mail failure cannot reveal account existence | `mail.e2e`, `configuration.spec` |
+| MFA recovery | 10 single-use codes stored as keyed hashes; failures count towards lockout; regeneration needs TOTP | `mfa-recovery.e2e` |
+| MFA reset | manager in the same jurisdiction only; signs the user out; Web Admin via audited break-glass CLI on the server | `mfa-recovery.e2e` |
+| Redis | password-protected, private network (compose); tests use a dedicated DB that the harness refuses to mix up | `infra/docker-compose.yml`, `global-setup.ts` |
+
 ## Input and transport (OWASP A03, A05, API4)
 | Control | Implementation | Test |
 |---|---|---|
@@ -63,9 +76,9 @@ secret scanning (gitleaks) and container scanning (Trivy).
 | Container | non-root user, read-only FS, all capabilities dropped, DB bound to localhost | `infra/docker-compose.yml`, Trivy in CI |
 
 ## Known gaps (tracked, must close before go-live)
-- **Email transport:** `LogMailService` only logs. An SMTP/SES transport is needed before production (M4).
-- **MFA recovery:** no recovery codes and no "reset MFA" by a higher role yet. Needed before admin onboarding (M3).
-- **Breached-password check:** small embedded deny-list. Add the HIBP k-anonymity check (M3).
+- ~~Email transport~~ — closed in M4 (SMTP, TLS required in production).
+- ~~MFA recovery~~ — closed in M4 (this was listed for M3 but slipped; recovery codes, manager reset and break-glass CLI now exist).
+- **Breached-password check:** still the small embedded deny-list. The HIBP k-anonymity check was listed for M3 and has not been done; it needs outbound access to api.pwnedpasswords.com from the API (M5).
 - **Key rotation:** PII key rotation (re-encrypt job) is not implemented yet (M5).
 - **DAST and pentest:** OWASP ZAP, MobSF, external pentest and CERT-In audit are scheduled in M9.
 - **CAPTCHA:** server-side verifier is implemented; the apps must send the token (M6/M7).

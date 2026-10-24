@@ -124,6 +124,14 @@ export class ListComplaintsQuery {
   @ApiPropertyOptional() @IsOptional() @IsISO8601()
   to?: string;
 
+  @ApiPropertyOptional({ description: 'Escalated (SLA ×2 or repeated reopen)' })
+  @IsOptional() @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value)) @IsBoolean()
+  escalated?: boolean;
+
+  @ApiPropertyOptional({ description: 'Open and past the SLA deadline' })
+  @IsOptional() @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value)) @IsBoolean()
+  overdue?: boolean;
+
   @ApiPropertyOptional({ default: 1 }) @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(10_000)
   page = 1;
 

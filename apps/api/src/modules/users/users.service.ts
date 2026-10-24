@@ -4,7 +4,7 @@ import { randomInt } from 'crypto';
 import { DataSource } from 'typeorm';
 import { AuthUser } from '../../common/auth-user';
 import { PiiCryptoService } from '../../common/crypto/pii-crypto.service';
-import { CREATABLE_ROLES, Role, UserStatus } from '../../common/enums';
+import { CREATABLE_ROLES, MFA_REQUIRED_ROLES, Role, UserStatus } from '../../common/enums';
 import { assertCanManageUlb } from '../../common/scope';
 import { AuditService } from '../audit/audit.service';
 import { ARGON2_OPTIONS } from '../auth/auth.service';
@@ -140,6 +140,25 @@ export class UsersService {
       await this.audit.log({ actorId: actor.id, action: 'HELPDESK_PASSWORD_RESET', entity: 'user', entityId: target.id, ip }, m);
     });
     return { id: target.id, tempPassword };
+  }
+
+  /**
+   * Lost authenticator and no recovery codes: the manager one level up clears MFA. The user
+   * is signed out everywhere and must enrol a new authenticator at next login.
+   */
+  async resetMfa(actor: AuthUser, targetId: string, ip?: string) {
+    const target = await this.loadManageable(actor, targetId);
+    if (!MFA_REQUIRED_ROLES.includes(target.role)) throw new BadRequestException('This user does not use MFA');
+    await this.ds.transaction(async (m) => {
+      await m.query(
+        `UPDATE users SET mfa_enabled = false, mfa_secret_enc = NULL, mfa_last_step = NULL, updated_at = now() WHERE id = $1`,
+        [target.id],
+      );
+      await m.query(`DELETE FROM mfa_recovery_codes WHERE user_id = $1`, [target.id]);
+      await this.sessions.revokeAll(target.id, m);
+      await this.audit.log({ actorId: actor.id, action: 'MFA_RESET_BY_ADMIN', entity: 'user', entityId: target.id, ip }, m);
+    });
+    return { id: target.id };
   }
 
   /**

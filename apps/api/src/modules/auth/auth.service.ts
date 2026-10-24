@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import { authenticator } from 'otplib';
@@ -8,6 +8,7 @@ import { MfaTokenClaims } from '../../common/auth-user';
 import { MFA_REQUIRED_ROLES, Role, UserStatus } from '../../common/enums';
 import { PiiCryptoService } from '../../common/crypto/pii-crypto.service';
 import { newOpaqueToken, sha256 } from '../../common/crypto/tokens';
+import { randomInt } from 'crypto';
 import { mutateReturning } from '../../common/db';
 import { AuditService } from '../audit/audit.service';
 import { ChangePasswordDto, LoginDto, RegisterCitizenDto, ResetPasswordDto } from './dto/auth.dto';
@@ -18,6 +19,8 @@ import { ClientInfo, SessionService, SessionTokens } from './session.service';
 export const MAX_FAILED_LOGINS = 5;
 export const LOCKOUT_MINUTES = 15;
 export const RESET_TOKEN_MINUTES = 15;
+export const RECOVERY_CODE_COUNT = 10;
+const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const MFA_TOKEN_TTL_SECONDS = 300;
 
 /** OWASP-recommended Argon2id parameters (19 MiB, t=2, p=1). */
@@ -43,12 +46,18 @@ interface UserRow {
   mobile_enc: string;
 }
 
+/** Codes are case-insensitive and may be typed with or without the dash. */
+export function normalizeRecoveryCode(code: string): string {
+  return code.replace(/[\s-]/g, '').toUpperCase();
+}
+
 const USER_COLUMNS = `id, role, status, password_hash, token_version, failed_login_count,
   (locked_until IS NOT NULL AND locked_until > now()) AS locked,
   mfa_enabled, mfa_secret_enc, mfa_last_step, email_enc, mobile_enc`;
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger('Auth');
   /** Verified against when the user does not exist, so response time does not reveal accounts. */
   private dummyHash: Promise<string>;
 
@@ -132,15 +141,71 @@ export class AuthService {
     return { secret, otpauthUrl: authenticator.keyuri(claims.sub, 'CityWasteMgmt', secret) };
   }
 
-  /** Step 2 of enrolment: prove the authenticator works, then sign in. */
-  async mfaActivate(mfaToken: string, code: string, client: ClientInfo): Promise<SessionTokens> {
+  /**
+   * Step 2 of enrolment: prove the authenticator works, then sign in. Returns one-time
+   * recovery codes (shown once) for when the phone with the authenticator is lost.
+   */
+  async mfaActivate(mfaToken: string, code: string, client: ClientInfo): Promise<SessionTokens & { recoveryCodes: string[] }> {
     const claims = await this.verifyMfaToken(mfaToken, 'enroll');
     const user = await this.findById(claims.sub);
     if (!user?.mfa_secret_enc || user.mfa_enabled) throw new UnauthorizedException();
     await this.checkTotp(user, code, client);
     await this.ds.query(`UPDATE users SET mfa_enabled = true, updated_at = now() WHERE id = $1`, [user.id]);
+    const recoveryCodes = await this.replaceRecoveryCodes(user.id);
     await this.audit.log({ actorId: user.id, action: 'MFA_ENABLED', entity: 'user', entityId: user.id, ip: client.ip });
-    return this.completeLogin(user, client);
+    return { ...(await this.completeLogin(user, client)), recoveryCodes };
+  }
+
+  /** Sign in with a one-time recovery code instead of the authenticator. */
+  async mfaRecover(mfaToken: string, recoveryCode: string, client: ClientInfo): Promise<SessionTokens & { recoveryCodesRemaining: number }> {
+    const claims = await this.verifyMfaToken(mfaToken, 'verify');
+    const user = await this.findById(claims.sub);
+    if (!user?.mfa_enabled || user.locked) throw new UnauthorizedException('Invalid code');
+    const used = await mutateReturning(
+      this.ds,
+      `UPDATE mfa_recovery_codes SET used_at = now() WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL RETURNING id`,
+      [user.id, this.pii.blindIndex(normalizeRecoveryCode(recoveryCode))],
+    );
+    if (!used.length) {
+      await this.recordFailure(user, client);
+      throw new UnauthorizedException('Invalid code');
+    }
+    await this.audit.log({ actorId: user.id, action: 'MFA_RECOVERY_CODE_USED', entity: 'user', entityId: user.id, ip: client.ip });
+    const [{ remaining }] = await this.ds.query(
+      `SELECT count(*)::int AS remaining FROM mfa_recovery_codes WHERE user_id = $1 AND used_at IS NULL`,
+      [user.id],
+    );
+    return { ...(await this.completeLogin(user, client)), recoveryCodesRemaining: remaining };
+  }
+
+  /** Issue a fresh set of recovery codes (invalidates the old ones). Requires a current TOTP code. */
+  async regenerateRecoveryCodes(userId: string, code: string, client: ClientInfo) {
+    const user = await this.findById(userId);
+    if (!user?.mfa_enabled || !user.mfa_secret_enc) throw new BadRequestException('MFA is not enabled');
+    await this.checkTotp(user, code, client);
+    const recoveryCodes = await this.replaceRecoveryCodes(user.id);
+    await this.audit.log({ actorId: user.id, action: 'MFA_RECOVERY_CODES_REGENERATED', entity: 'user', entityId: user.id, ip: client.ip });
+    return { recoveryCodes };
+  }
+
+  async setPreferences(userId: string, preferredLanguage: 'hi' | 'en') {
+    await this.ds.query(`UPDATE users SET preferred_language = $2, updated_at = now() WHERE id = $1`, [userId, preferredLanguage]);
+    return this.me(userId);
+  }
+
+  private async replaceRecoveryCodes(userId: string): Promise<string[]> {
+    const codes = Array.from({ length: RECOVERY_CODE_COUNT }, () => {
+      const raw = Array.from({ length: 10 }, () => RECOVERY_ALPHABET[randomInt(RECOVERY_ALPHABET.length)]).join('');
+      return `${raw.slice(0, 5)}-${raw.slice(5)}`;
+    });
+    await this.ds.transaction(async (m) => {
+      await m.query(`DELETE FROM mfa_recovery_codes WHERE user_id = $1`, [userId]);
+      await m.query(
+        `INSERT INTO mfa_recovery_codes (user_id, code_hash) SELECT $1, h FROM unnest($2::text[]) AS h`,
+        [userId, codes.map((c) => this.pii.blindIndex(normalizeRecoveryCode(c)))],
+      );
+    });
+    return codes;
   }
 
   async mfaVerify(mfaToken: string, code: string, client: ClientInfo): Promise<SessionTokens> {
@@ -188,11 +253,12 @@ export class AuthService {
       await this.audit.log({ actorId: user.id, action: 'PASSWORD_RESET_REQUESTED', entity: 'user', entityId: user.id, ip: client.ip }, m);
     });
     const link = `${this.config.passwordResetUrl}?token=${encodeURIComponent(token)}`;
+    // A mail outage must not change the response (that would reveal the account exists).
     await this.mail.send(
       this.pii.decrypt(user.email_enc),
       'Password reset / पासवर्ड रीसेट',
       `Use this link within ${RESET_TOKEN_MINUTES} minutes to set a new password:\n${link}\n\nIf you did not ask for this, ignore this email.`,
-    );
+    ).catch((err) => this.logger.error(`Password reset mail failed: ${err}`));
   }
 
   async resetPassword(dto: ResetPasswordDto, client: ClientInfo): Promise<void> {
@@ -221,7 +287,8 @@ export class AuthService {
   async me(userId: string) {
     const [u] = await this.ds.query(
       `SELECT id, role, status, name, guardian_name, mobile_enc, email_enc, must_change_password, mfa_enabled,
-              district_id, ulb_id, area_id, home_district_id, home_ulb_id, home_ward_id, created_at
+              district_id, ulb_id, area_id, home_district_id, home_ulb_id, home_ward_id, created_at, preferred_language,
+              (SELECT count(*)::int FROM mfa_recovery_codes r WHERE r.user_id = users.id AND r.used_at IS NULL) AS recovery_left
          FROM users WHERE id = $1`,
       [userId],
     );
@@ -229,6 +296,7 @@ export class AuthService {
       id: u.id, role: u.role, status: u.status, name: u.name, guardianName: u.guardian_name,
       mobile: this.pii.decrypt(u.mobile_enc), email: u.email_enc ? this.pii.decrypt(u.email_enc) : null,
       mustChangePassword: u.must_change_password, mfaEnabled: u.mfa_enabled,
+      recoveryCodesRemaining: u.mfa_enabled ? u.recovery_left : null, preferredLanguage: u.preferred_language,
       districtId: u.district_id, ulbId: u.ulb_id, areaId: u.area_id,
       homeDistrictId: u.home_district_id, homeUlbId: u.home_ulb_id, homeWardId: u.home_ward_id,
       createdAt: u.created_at,

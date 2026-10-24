@@ -17,3 +17,11 @@ process.env.S3_SECRET_ACCESS_KEY = 'test';
 process.env.S3_FORCE_PATH_STYLE = 'true';
 process.env.VIDEO_PRESET = 'ultrafast';
 delete process.env.CLAMAV_HOST;
+// Redis DB 15 is reserved for tests and flushed by the global setup.
+process.env.REDIS_URL ??= 'redis://127.0.0.1:6379/15';
+process.env.REDIS_PREFIX = 'cwm-test';
+process.env.PROCESS_ROLE = 'all';
+// Tests trigger sweeps explicitly; timers would make assertions racy.
+process.env.JOBS_SCHEDULES = 'off';
+process.env.MAIL_TRANSPORT = 'log';
+delete process.env.FCM_SERVICE_ACCOUNT_B64;

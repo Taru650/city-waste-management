@@ -14,6 +14,17 @@ services:
       interval: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 5s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
   minio:
     # Pin images by digest (image@sha256:...) when deploying; tags move.
     image: minio/minio:latest
@@ -42,10 +53,12 @@ services:
       interval: 30s
       retries: 20
 
-  api:
+  api: &api
     build: ../apps/api
     env_file: ../apps/api/.env
-    environment:
+    environment: &api-env
+      PROCESS_ROLE: api
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       DATABASE_URL: postgres://cwm:${POSTGRES_PASSWORD}@db:5432/cwm
       NODE_ENV: ${NODE_ENV:-development}
       S3_ENDPOINT: http://minio:9000
@@ -58,12 +71,26 @@ services:
       db: { condition: service_healthy }
       minio-init: { condition: service_completed_successfully }
       clamav: { condition: service_healthy }
+      redis: { condition: service_healthy }
     ports: ["127.0.0.1:3000:3000"]
     read_only: true
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
 
+  # Background jobs: video transcoding, push dispatch, SLA sweep, auto-close, media purge.
+  # Scale with `docker compose up --scale worker=N` for peak events.
+  worker:
+    <<: *api
+    command: ["node", "dist/worker.js"]
+    environment:
+      <<: *api-env
+      PROCESS_ROLE: worker
+    ports: []
+    healthcheck:
+      disable: true
+
 volumes:
   dbdata:
   miniodata:
+  redisdata:

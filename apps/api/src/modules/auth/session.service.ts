@@ -94,6 +94,8 @@ export class SessionService {
     await manager.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
     // Device signing keys go too; the app re-registers its key after the next login.
     await manager.query(`UPDATE devices SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+    // ...and push tokens, so a signed-out phone stops receiving this user's notifications.
+    await manager.query(`DELETE FROM push_tokens WHERE user_id = $1`, [userId]);
     await manager.query(`UPDATE users SET token_version = token_version + 1, updated_at = now() WHERE id = $1`, [userId]);
   }
 }

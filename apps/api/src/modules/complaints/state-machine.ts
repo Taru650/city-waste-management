@@ -11,6 +11,9 @@ export enum ComplaintAction {
   CLOSE = 'CLOSE',
   REOPEN = 'REOPEN',
   AUTO_CLOSE = 'AUTO_CLOSE',
+  /** Timeline-only events (no status change), written by the SLA sweeper. */
+  SLA_BREACH = 'SLA_BREACH',
+  ESCALATE = 'ESCALATE',
 }
 
 /** 'SYSTEM' = background jobs and automatic routing. */
@@ -29,7 +32,9 @@ const OPEN_FOR_TRIAGE = [S.PENDING, S.ASSIGNED, S.REOPENED];
  * PENDING → ASSIGNED → WORK_IN_PROGRESS → RESOLVED → CLOSED, with REJECTED / DUPLICATE
  * exits during triage and RESOLVED → REOPENED when the citizen is not satisfied.
  */
-export const RULES: Record<Exclude<ComplaintAction, ComplaintAction.CREATE>, Rule> = {
+export type TransitionAction = Exclude<ComplaintAction, ComplaintAction.CREATE | ComplaintAction.SLA_BREACH | ComplaintAction.ESCALATE>;
+
+export const RULES: Record<TransitionAction, Rule> = {
   [ComplaintAction.ROUTE]: { to: S.ASSIGNED, from: { SYSTEM: [S.PENDING] } },
   [ComplaintAction.ASSIGN]: {
     to: S.ASSIGNED,
@@ -67,7 +72,7 @@ export const RULES: Record<Exclude<ComplaintAction, ComplaintAction.CREATE>, Rul
 export class InvalidTransitionError extends Error {}
 
 /** Returns the target status, or throws if this actor may not perform this action from this status. */
-export function transition(action: Exclude<ComplaintAction, ComplaintAction.CREATE>, from: S, actor: Actor): S {
+export function transition(action: TransitionAction, from: S, actor: Actor): S {
   const rule = RULES[action];
   if (!rule.from[actor]?.includes(from)) {
     throw new InvalidTransitionError(`${actor} cannot ${action} a complaint that is ${from}`);
