@@ -1,8 +1,9 @@
 import 'reflect-metadata';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { InitialSchema1761300000000 } from './migrations/1761300000000-InitialSchema';
+import { MediaPipeline1761400000000 } from './migrations/1761400000000-MediaPipeline';
 
-export const MIGRATIONS = [InitialSchema1761300000000];
+export const MIGRATIONS = [InitialSchema1761300000000, MediaPipeline1761400000000];
 
 /**
  * Queries are written in SQL through the DataSource (PostGIS-heavy, and keeps

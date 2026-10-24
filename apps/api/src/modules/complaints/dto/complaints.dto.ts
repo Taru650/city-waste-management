@@ -1,7 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
-  IsBoolean, IsEnum, IsInt, IsISO8601, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested,
+  ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEnum, IsInt, IsISO8601, IsLatitude, IsLongitude, IsNumber, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { ComplaintStatus } from '../../../common/enums';
 
@@ -42,6 +42,16 @@ export class CreateComplaintDto {
 
   @ApiProperty({ maxLength: 250 }) @Transform(trim) @IsString() @Length(5, 250)
   description: string;
+
+  @ApiProperty({ type: [String], description: 'Verified in-app captures (POST /media/upload-url → confirm). 1–6 items.' })
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(6) @ArrayUnique() @IsUUID('4', { each: true })
+  mediaIds: string[];
+}
+
+class ProofMedia {
+  @ApiPropertyOptional({ type: [String], description: 'In-app photos/video. Required (≥1 photo) when a worker starts or resolves.' })
+  @IsOptional() @IsArray() @ArrayMaxSize(6) @ArrayUnique() @IsUUID('4', { each: true })
+  mediaIds?: string[];
 }
 
 export class AssignDto {
@@ -55,7 +65,7 @@ export class AssignDto {
   remark?: string;
 }
 
-export class StartWorkDto {
+export class StartWorkDto extends ProofMedia {
   @ApiPropertyOptional() @IsOptional() @Transform(trim) @IsString() @MaxLength(500)
   remark?: string;
 
@@ -63,7 +73,7 @@ export class StartWorkDto {
   location?: GeoPointDto;
 }
 
-export class ResolveDto {
+export class ResolveDto extends ProofMedia {
   @ApiProperty() @Transform(trim) @IsString() @Length(5, 500)
   remark: string;
 

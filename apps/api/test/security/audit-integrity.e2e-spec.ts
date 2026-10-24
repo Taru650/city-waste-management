@@ -1,5 +1,5 @@
 import { Role } from '../../src/common/enums';
-import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, login, TestCtx, tokenFor } from '../helpers';
+import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, login, quickMedia, TestCtx, tokenFor } from '../helpers';
 
 /** OWASP A09: tamper-evident logging; CERT-In requires reliable logs. */
 describe('Security: audit trail integrity', () => {
@@ -16,7 +16,7 @@ describe('Security: audit trail integrity', () => {
     const citizen = await createUser(ctx, Role.CITIZEN, j);
     const typeId = (await ctx.http().get(api('/masters/complaint-types'))).body[0].id;
     const c = await ctx.http().post(api('/complaints')).set(bearer(await tokenFor(ctx, citizen)))
-      .send({ typeId, ...j.wards[0].center, description: 'Garbage dump near park' }).expect(201);
+      .send({ typeId, ...j.wards[0].center, description: 'Garbage dump near park', mediaIds: [await quickMedia(ctx, citizen.id)] }).expect(201);
     await ctx.ds.query(`INSERT INTO feedback (complaint_id, citizen_id, rating) VALUES ($1, $2, 4)`, [c.body.id, citizen.id]);
     for (const sql of [
       `UPDATE complaint_events SET remark = 'tampered' WHERE complaint_id = '${c.body.id}'`,

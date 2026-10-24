@@ -7,6 +7,7 @@ const base = {
   JWT_MFA_SECRET: 'b'.repeat(32),
   PII_ENCRYPTION_KEY: key,
   PII_HASH_KEY: Buffer.alloc(32, 2).toString('base64'),
+  S3_BUCKET: 'media',
 };
 
 describe('loadConfig', () => {
@@ -19,6 +20,7 @@ describe('loadConfig', () => {
     [{ JWT_MFA_SECRET: 'a'.repeat(32) }, /must differ/],
     [{ PII_ENCRYPTION_KEY: Buffer.alloc(16).toString('base64') }, /32 bytes/],
     [{ DATABASE_URL: '' }, /DATABASE_URL/],
+    [{ S3_BUCKET: '' }, /S3_BUCKET/],
   ])('refuses to boot with %p', (override, msg) => {
     expect(() => loadConfig({ ...base, ...override })).toThrow(msg);
   });
@@ -26,5 +28,6 @@ describe('loadConfig', () => {
   it('requires CAPTCHA and CORS origins in production', () => {
     expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(/CAPTCHA_SECRET/);
     expect(() => loadConfig({ ...base, NODE_ENV: 'production', CAPTCHA_SECRET: 's' })).toThrow(/CORS_ORIGINS/);
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production', CAPTCHA_SECRET: 's', CORS_ORIGINS: 'https://x' })).toThrow(/CLAMAV_HOST/);
   });
 });

@@ -9,6 +9,8 @@ RUN npm run build && npm prune --omit=dev
 
 FROM node:22-bookworm-slim
 ENV NODE_ENV=production
+# ffmpeg/ffprobe transcode citizen and worker videos (sharp ships its own libvips).
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist

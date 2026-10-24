@@ -43,6 +43,11 @@ export class ComplaintsController {
     return this.complaints.get(user, id);
   }
 
+  @Get(':id/media')
+  media(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string) {
+    return this.complaints.listMedia(user, id);
+  }
+
   @Roles(...TRIAGE)
   @Get(':id/duplicate-candidates')
   duplicateCandidates(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string) {

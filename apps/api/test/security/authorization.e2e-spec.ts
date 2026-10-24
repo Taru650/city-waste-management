@@ -1,5 +1,5 @@
 import { Role } from '../../src/common/enums';
-import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, TestCtx, TestUser, tokenFor } from '../helpers';
+import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, quickMedia, TestCtx, TestUser, tokenFor } from '../helpers';
 
 /** OWASP API1 (BOLA/IDOR), API3 (mass assignment) and API5 (function-level authorisation). */
 describe('Security: authorisation and jurisdiction isolation', () => {
@@ -34,12 +34,12 @@ describe('Security: authorisation and jurisdiction isolation', () => {
     for (const [k, v] of Object.entries(u)) t[k] = await tokenFor(ctx, v);
 
     const c = await ctx.http().post(api('/complaints')).set(bearer(t.citizenA))
-      .send({ typeId, ...j.wards[0].center, description: 'Garbage near the school gate' }).expect(201);
+      .send({ typeId, ...j.wards[0].center, description: 'Garbage near the school gate', mediaIds: [await quickMedia(ctx, u.citizenA.id)] }).expect(201);
     complaintId = c.body.id;
     complaintNo = c.body.complaintNo;
     await ctx.http().post(api(`/complaints/${complaintId}/assign`)).set(bearer(t.supervisor)).send({ workerId: u.worker.id }).expect(201);
     const c2 = await ctx.http().post(api('/complaints')).set(bearer(t.citizenB))
-      .send({ typeId, ...j.wards[1].center, description: 'Drain overflowing on main road' }).expect(201);
+      .send({ typeId, ...j.wards[1].center, description: 'Drain overflowing on main road', mediaIds: [await quickMedia(ctx, u.citizenB.id)] }).expect(201);
     otherAreaComplaintId = c2.body.id;
   });
   afterAll(() => ctx.app.close());
@@ -122,7 +122,8 @@ describe('Security: authorisation and jurisdiction isolation', () => {
 
     it('a citizen cannot set status, assignee or owner when filing', async () => {
       const res = await ctx.http().post(api('/complaints')).set(bearer(t.citizenB)).send({
-        typeId, ...j.wards[0].center, description: 'Trying to self-resolve', status: 'CLOSED', workerId: u.worker.id, citizenId: u.citizenA.id,
+        typeId, ...j.wards[0].center, description: 'Trying to self-resolve', mediaIds: [await quickMedia(ctx, u.citizenB.id)],
+        status: 'CLOSED', workerId: u.worker.id, citizenId: u.citizenA.id,
       });
       expect(res.status).toBe(400);
     });

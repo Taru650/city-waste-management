@@ -92,6 +92,8 @@ export class SessionService {
   /** Log the user out everywhere: revoke all refresh tokens and invalidate live access tokens. */
   async revokeAll(userId: string, manager: EntityManager = this.ds.manager): Promise<void> {
     await manager.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+    // Device signing keys go too; the app re-registers its key after the next login.
+    await manager.query(`UPDATE devices SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
     await manager.query(`UPDATE users SET token_version = token_version + 1, updated_at = now() WHERE id = $1`, [userId]);
   }
 }

@@ -12,6 +12,8 @@ import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ComplaintsModule } from './modules/complaints/complaints.module';
 import { MastersModule } from './modules/masters/masters.module';
+import { MediaModule } from './modules/media/media.module';
+import { StorageModule } from './modules/storage/storage.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Controller('health')
@@ -31,7 +33,9 @@ class HealthController {
       useFactory: (config: AppConfig) => [{ name: 'default', ttl: 60_000, limit: config.rateLimitGlobalPerMin }],
     }),
     AuditModule,
+    StorageModule,
     AuthModule,
+    MediaModule,
     UsersModule,
     MastersModule,
     ComplaintsModule,

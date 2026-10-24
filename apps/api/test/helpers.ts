@@ -1,4 +1,5 @@
 import './test-env';
+import { createHash, generateKeyPairSync, KeyObject, randomBytes, sign as signData } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
@@ -161,3 +162,88 @@ export async function tokenFor(ctx: TestCtx, user: TestUser): Promise<string> {
 }
 
 export const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
+
+// ---------------------------------------------------------------------------
+// Media helpers: simulate the app's device key and signed in-app capture.
+// ---------------------------------------------------------------------------
+
+export const subOf = (token: string): string => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).sub;
+
+export class TestDevice {
+  constructor(readonly id: string, readonly privateKey: KeyObject, readonly publicKeyB64: string) {}
+
+  static async register(ctx: TestCtx, token: string): Promise<TestDevice> {
+    const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const spki = publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+    const res = await ctx.http().post(api('/devices')).set(bearer(token)).send({ publicKey: spki, platform: 'ANDROID', appVersion: '1.0.0' });
+    if (res.status !== 201) throw new Error(`device registration failed: ${res.status} ${JSON.stringify(res.body)}`);
+    return new TestDevice(res.body.id, privateKey, spki);
+  }
+
+  sign(manifest: object, key: KeyObject = this.privateKey) {
+    const encoded = Buffer.from(JSON.stringify(manifest)).toString('base64url');
+    return { manifest: encoded, signature: signData('sha256', Buffer.from(encoded, 'base64url'), key).toString('base64') };
+  }
+}
+
+export const sha256hex = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+
+export interface CaptureOptions {
+  kind?: 'PHOTO' | 'VIDEO';
+  contentType?: string;
+  location?: { lat: number; lng: number };
+  accuracyM?: number;
+  capturedAt?: Date;
+  isMockLocation?: boolean;
+  /** Bytes actually PUT to storage (defaults to the declared file). */
+  uploadBody?: Buffer;
+  /** Edit the manifest before it is signed. */
+  manifest?: (m: Record<string, unknown>) => Record<string, unknown>;
+  /** Replace the signature entirely. */
+  signature?: string;
+}
+
+/** Full app flow: request upload URL → PUT to storage → confirm with signed manifest. */
+export async function capture(ctx: TestCtx, token: string, device: TestDevice, file: Buffer, o: CaptureOptions = {}) {
+  const kind = o.kind ?? 'PHOTO';
+  const contentType = o.contentType ?? (kind === 'PHOTO' ? 'image/jpeg' : 'video/mp4');
+  const sha = sha256hex(file);
+  const up = await ctx.http().post(api('/media/upload-url')).set(bearer(token))
+    .send({ deviceId: device.id, kind, contentType, bytes: file.length, sha256: sha });
+  if (up.status !== 201) return { upload: up, confirm: undefined, mediaId: undefined as unknown as string };
+  const body = o.uploadBody ?? file;
+  const put = await fetch(up.body.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body });
+  if (!put.ok) throw new Error(`storage PUT failed: ${put.status} ${await put.text()}`);
+  let manifest: Record<string, unknown> = {
+    v: 1, mediaId: up.body.mediaId, deviceId: device.id, kind, sha256: sha,
+    capturedAt: (o.capturedAt ?? new Date()).toISOString(),
+    lat: o.location?.lat ?? 21.25, lng: o.location?.lng ?? 81.63, accuracyM: o.accuracyM ?? 6,
+    isMockLocation: o.isMockLocation ?? false,
+  };
+  if (o.manifest) manifest = o.manifest(manifest);
+  const signed = device.sign(manifest);
+  const confirm = await ctx.http().post(api(`/media/${up.body.mediaId}/confirm`)).set(bearer(token))
+    .send({ manifest: signed.manifest, signature: o.signature ?? signed.signature });
+  return { upload: up, confirm, mediaId: up.body.mediaId as string };
+}
+
+/**
+ * Fast fixture for tests that are not about the media pipeline: inserts an already-verified
+ * READY photo owned by the user. The real pipeline is covered by media.e2e and security/media.
+ */
+export async function quickMedia(ctx: TestCtx, userId: string, location?: { lat: number; lng: number }): Promise<string> {
+  const fp = randomBytes(32).toString('hex');
+  const [d] = await ctx.ds.query(
+    `INSERT INTO devices (user_id, public_key, key_fingerprint, platform) VALUES ($1, 'fixture', $2, 'ANDROID') RETURNING id`,
+    [userId, fp],
+  );
+  const [m] = await ctx.ds.query(
+    `INSERT INTO complaint_media (owner_id, device_id, kind, status, content_type, declared_bytes, declared_sha256,
+                                  object_key, thumb_key, captured_at, location, gps_accuracy_m, scan_status, confirmed_at, processed_at)
+     VALUES ($1, $2, 'PHOTO', 'READY', 'image/jpeg', 1000, $3, 'fixture.jpg', 'fixture.thumb.jpg', now(),
+             ST_SetSRID(ST_MakePoint($5, $4), 4326), 5, 'SKIPPED', now(), now())
+     RETURNING id`,
+    [userId, d.id, randomBytes(32).toString('hex'), location?.lat ?? 21.25, location?.lng ?? 81.63],
+  );
+  return m.id;
+}

@@ -5,6 +5,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { AuthUser } from '../../common/auth-user';
 import { mutateReturning } from '../../common/db';
 import { ComplaintStatus, Role, WardSource } from '../../common/enums';
+import { MediaService, MediaStage } from '../media/media.service';
 import { buildComplaintNo, formatComplaintNo, normalizeComplaintNo, SEQ_MAX } from './complaint-number';
 import {
   AssignDto, CreateComplaintDto, DuplicateDto, FeedbackDto, GeoPointDto, ListComplaintsQuery, RejectDto, ResolveDto, StartWorkDto,
@@ -32,6 +33,7 @@ interface ComplaintRow {
   worker_id: string | null;
   type_id: string;
   reopen_count: number;
+  created_at: Date;
   resolved_within_window: boolean;
 }
 
@@ -115,7 +117,7 @@ function toView(r: any) {
 
 @Injectable()
 export class ComplaintsService {
-  constructor(private readonly ds: DataSource) {}
+  constructor(private readonly ds: DataSource, private readonly media: MediaService) {}
 
   async create(citizen: AuthUser, dto: CreateComplaintDto) {
     const [{ count }] = await this.ds.query(
@@ -153,8 +155,9 @@ export class ComplaintsService {
           type.id, dto.landmark || null, dto.description, dto.lat, dto.lng, dto.gpsAccuracyM ?? null, type.sla_hours,
         ],
       );
+      const proof = await this.media.attach(m, citizen, row.id, MediaStage.COMPLAINT, dto.mediaIds, { requireAny: true });
       await this.event(m, row.id, ComplaintAction.CREATE, null, ComplaintStatus.PENDING, citizen.id, null, {
-        wardSource: ward.source, wardMismatch: ward.mismatch,
+        wardSource: ward.source, wardMismatch: ward.mismatch, media: proof,
       });
       if (supervisorId) {
         // Auto-route to the area supervisor; with no supervisor it waits in the Sub Admin's PENDING queue.
@@ -234,18 +237,33 @@ export class ComplaintsService {
     });
   }
 
+  /** Workers must prove field work with in-app photos; supervisors may add them (staff app) or act by remark (web). */
+  private proofRules(user: AuthUser, c: ComplaintRow) {
+    return { requirePhoto: user.role === Role.WORKER, capturedAfter: new Date(c.created_at) };
+  }
+
   async start(user: AuthUser, id: string, dto: StartWorkDto) {
     return this.act(user, id, ComplaintAction.START, async (m, c, to) => {
       await m.query(`UPDATE complaints SET status = $2 WHERE id = $1`, [c.id, to]);
-      return { remark: dto.remark, meta: await this.geoMeta(m, c.id, dto.location) };
+      const media = await this.media.attach(m, user, c.id, MediaStage.WORK_START, dto.mediaIds, this.proofRules(user, c));
+      return { remark: dto.remark, meta: { ...(await this.geoMeta(m, c.id, dto.location)), media } };
     });
   }
 
   async resolve(user: AuthUser, id: string, dto: ResolveDto) {
     return this.act(user, id, ComplaintAction.RESOLVE, async (m, c, to) => {
       await m.query(`UPDATE complaints SET status = $2, resolved_at = now(), resolution_remark = $3 WHERE id = $1`, [c.id, to, dto.remark]);
-      return { remark: dto.remark, meta: await this.geoMeta(m, c.id, dto.location) };
+      const media = await this.media.attach(m, user, c.id, MediaStage.RESOLUTION, dto.mediaIds, this.proofRules(user, c));
+      return { remark: dto.remark, meta: { ...(await this.geoMeta(m, c.id, dto.location)), media } };
     });
+  }
+
+  /** Before/after evidence with short-lived signed URLs, for anyone allowed to see the complaint. */
+  async listMedia(user: AuthUser, id: string) {
+    const params: unknown[] = [id];
+    const [row] = await this.ds.query(`SELECT c.id FROM complaints c WHERE c.id = $1 AND ${scopeFilter(user, params)}`, params);
+    if (!row) throw new NotFoundException('Complaint not found');
+    return this.media.listForComplaint(id);
   }
 
   async reject(user: AuthUser, id: string, dto: RejectDto) {
@@ -348,7 +366,7 @@ export class ComplaintsService {
       const params: unknown[] = [id, FEEDBACK_WINDOW_DAYS];
       const [c]: ComplaintRow[] = await m.query(
         `SELECT c.id, c.status, c.citizen_id, c.district_id, c.ulb_id, c.area_id, c.supervisor_id, c.worker_id,
-                c.type_id, c.reopen_count,
+                c.type_id, c.reopen_count, c.created_at,
                 (c.resolved_at IS NOT NULL AND c.resolved_at > now() - make_interval(days => $2)) AS resolved_within_window
            FROM complaints c WHERE c.id = $1 AND ${scopeFilter(user, params)}
            FOR UPDATE`,

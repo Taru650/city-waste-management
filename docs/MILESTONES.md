@@ -7,8 +7,8 @@ security) pass in CI. The next milestone does not start until then.
 |---|-----------|--------|
 | M1 | API foundation, auth, sessions, staff hierarchy | ✅ Done |
 | M2 | Masters (LGD codes, ward polygons, areas) and complaint lifecycle | ✅ Done |
-| M3 | Camera-only media pipeline (capture signature, upload, compression) | ⏭ Next |
-| M4 | SLA timers, escalation, auto-close job, push notifications | Planned |
+| M3 | Camera-only media pipeline (capture signature, upload, compression) | ✅ Done |
+| M4 | SLA timers, escalation, auto-close job, push notifications | ⏭ Next |
 | M5 | Reports and analytics (pendency, ageing, disposal time, quality, exports) | Planned |
 | M6 | Next.js web portal (admins, supervisors) | Planned |
 | M7 | Flutter Citizen app and Staff app | Planned |
@@ -48,16 +48,22 @@ security) pass in CI. The next milestone does not start until then.
 
 **Exit criteria (met):** `test/masters`, `test/complaints`, `test/security/authorization` green, including the 40-way concurrent numbering test.
 
-## M3 — Camera-only media pipeline (next)
-- Device key registration at login (per-install keypair in Android Keystore).
-- `POST /complaints/:id/media/upload-url` → pre-signed PUT to S3/MinIO; `POST .../media/confirm` with signed capture manifest `{sha256, capturedAt, lat, lng, accuracy, isMock}`.
-- Server: verify signature, capture time ≤ 24 h, sha256 match, magic bytes, size caps (5 photos + 1 × 30 s video per stage), ClamAV scan, EXIF strip, libvips/FFmpeg re-encode, thumbnails.
-- Photo mandatory for START and RESOLVE by workers; complaint creation requires ≥ 1 photo or video.
-- Signed GET URLs (5 min) for viewing.
-- **Tests:** forged/missing signature rejected, stale capture rejected, MIME spoofing rejected, oversize rejected, cross-scope media access 404, compression ratio and SSIM ≥ 0.95.
+## M3 — Camera-only media pipeline ✅
+**Delivered**
+- Device keys: EC P-256 per app install (`POST /devices`), max 5 active, revoked by logout-all and password reset.
+- Upload flow: `POST /media/upload-url` (pre-signed S3 PUT, type + size signed, 10 min) → `POST /media/:id/confirm` with a signed capture manifest. Contract for the apps: [`MEDIA_CAPTURE_CONTRACT.md`](MEDIA_CAPTURE_CONTRACT.md).
+- Server checks: ECDSA signature by the registered key, manifest bound to this upload, capture ≤ 24 h old and not in the future, no mock GPS, accuracy ≤ 100 m, exact size, SHA-256, magic bytes, same capture never accepted twice, ClamAV INSTREAM scan (fail-closed, retryable).
+- Compression: photos auto-rotated, ≤ 1920 px, mozjpeg q82, EXIF/GPS stripped, 320 px thumbnail; videos H.264 CRF 26 with the short edge ≤ 720 px, AAC 64 kbps, faststart, metadata stripped, ≤ 30 s, background queue resumed on restart. Decompression-bomb guard (40 MP).
+- Measured: 12 MP photo 4.87 MB → 127 KB at SSIM 0.995; 4 s 1080p clip 13.2 MB → 2.5 MB at 720p (fastest preset; production uses `slow`).
+- Evidence rules: complaint needs ≥ 1 capture; worker START/RESOLVE need ≥ 1 photo captured after filing; ≤ 5 photos + 1 video per stage; only the capturer can attach, once; distance from the complaint recorded and flagged beyond 100 m.
+- `GET /complaints/:id/media`: before/after evidence per stage, 5-minute signed URLs, scoped like the complaint.
+- Orphan purge (unattached > 24 h), runnable now and scheduled in M4.
+- Infra: MinIO + ClamAV in compose, ffmpeg in the runtime image; CI runs the S3 tests against moto.
+
+**Exit criteria (met):** `test/media` (14), `test/security/media` (31), media unit tests (processor, manifest, magic bytes, clamd) green; full suite 264 tests.
 
 ## M4 — SLA, escalation, notifications
-- BullMQ + Redis: SLA breach → supervisor; 2× SLA → Sub Admin; nightly auto-close job.
+- BullMQ + Redis: SLA breach → supervisor; 2× SLA → Sub Admin; nightly auto-close and orphan-media purge; move video transcoding from the in-process queue to BullMQ workers.
 - FCM push on every status change; in-app notification list.
 - **Tests:** timers fire, idempotent jobs, no notifications leak other citizens' data.
 

@@ -1,5 +1,5 @@
 import { Role } from '../../src/common/enums';
-import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, TestCtx, tokenFor } from '../helpers';
+import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, quickMedia, subOf, TestCtx, tokenFor } from '../helpers';
 
 /** OWASP A03 (injection), API4 (resource consumption), A05 (misconfiguration / error leakage). */
 describe('Security: input handling', () => {
@@ -31,7 +31,7 @@ describe('Security: input handling', () => {
 
   it('free text with SQL and script content is stored verbatim and served as inert JSON', async () => {
     const description = `<script>alert(1)</script> '; DROP TABLE users; --`;
-    const res = await ctx.http().post(api('/complaints')).set(bearer(citizen)).send({ typeId, ...j.wards[0].center, description }).expect(201);
+    const res = await ctx.http().post(api('/complaints')).set(bearer(citizen)).send({ typeId, ...j.wards[0].center, description, mediaIds: [await quickMedia(ctx, subOf(citizen))] }).expect(201);
     expect(res.body.description).toBe(description);
     expect(res.headers['content-type']).toMatch(/^application\/json/);
     expect(res.headers['x-content-type-options']).toBe('nosniff');
@@ -60,7 +60,7 @@ describe('Security: input handling', () => {
 
   it('rejects wrong types and out-of-range coordinates', async () => {
     for (const bad of [{ lat: '21.2; DROP' }, { lat: 91 }, { lng: -181 }, { lat: null }, { typeId: 'not-a-uuid' }]) {
-      await ctx.http().post(api('/complaints')).set(bearer(citizen)).send({ typeId, ...j.wards[0].center, description: 'Valid text', ...bad }).expect(400);
+      await ctx.http().post(api('/complaints')).set(bearer(citizen)).send({ typeId, ...j.wards[0].center, description: 'Valid text', mediaIds: [await quickMedia(ctx, subOf(citizen))], ...bad }).expect(400);
     }
   });
 

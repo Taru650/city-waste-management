@@ -15,6 +15,24 @@ export interface AppConfig {
   rateLimitAuthPerMin: number;
   captchaSecret: string;
   captchaVerifyUrl: string;
+  s3: {
+    endpoint?: string;
+    /** Host the apps use for pre-signed URLs when it differs from the internal endpoint. */
+    publicEndpoint?: string;
+    region: string;
+    bucket: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+    forcePathStyle: boolean;
+  };
+  media: {
+    maxCaptureAgeHours: number;
+    maxGpsAccuracyM: number;
+    videoMaxSeconds: number;
+    /** x264 preset; 'slow' gives the best size/quality for production. */
+    videoPreset: string;
+  };
+  clamav: { host?: string; port: number };
 }
 
 function required(env: NodeJS.ProcessEnv, key: string): string {
@@ -55,6 +73,22 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     rateLimitAuthPerMin: Number(env.RATE_LIMIT_AUTH_PER_MIN ?? 10),
     captchaSecret: env.CAPTCHA_SECRET ?? '',
     captchaVerifyUrl: env.CAPTCHA_VERIFY_URL ?? 'https://hcaptcha.com/siteverify',
+    s3: {
+      endpoint: env.S3_ENDPOINT || undefined,
+      publicEndpoint: env.S3_PUBLIC_ENDPOINT || undefined,
+      region: env.S3_REGION ?? 'ap-south-1',
+      bucket: required(env, 'S3_BUCKET'),
+      accessKeyId: env.S3_ACCESS_KEY_ID || undefined,
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY || undefined,
+      forcePathStyle: env.S3_FORCE_PATH_STYLE === 'true',
+    },
+    media: {
+      maxCaptureAgeHours: Number(env.MEDIA_MAX_CAPTURE_AGE_HOURS ?? 24),
+      maxGpsAccuracyM: Number(env.MEDIA_MAX_GPS_ACCURACY_M ?? 100),
+      videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS ?? 30),
+      videoPreset: env.VIDEO_PRESET ?? 'slow',
+    },
+    clamav: { host: env.CLAMAV_HOST || undefined, port: Number(env.CLAMAV_PORT ?? 3310) },
   };
   if (config.jwtAccessSecret === config.jwtMfaSecret) {
     throw new Error('JWT_ACCESS_SECRET and JWT_MFA_SECRET must differ');
@@ -62,6 +96,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (nodeEnv === 'production') {
     if (!config.captchaSecret) throw new Error('CAPTCHA_SECRET is required in production');
     if (config.corsOrigins.length === 0) throw new Error('CORS_ORIGINS is required in production');
+    if (!config.clamav.host) throw new Error('CLAMAV_HOST is required in production (malware scanning of uploads)');
   }
   return config;
 }

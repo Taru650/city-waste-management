@@ -1,5 +1,6 @@
+import { Response } from 'supertest';
 import { Role } from '../src/common/enums';
-import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, TestCtx, TestUser, tokenFor } from './helpers';
+import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, quickMedia, subOf, TestCtx, TestUser, tokenFor } from './helpers';
 
 describe('Complaint lifecycle (M2)', () => {
   let ctx: TestCtx;
@@ -35,10 +36,24 @@ describe('Complaint lifecycle (M2)', () => {
     citizenToken = await tokenFor(ctx, citizen);
   });
 
-  const file = (token: string, over: object = {}) =>
-    ctx.http().post(api('/complaints')).set(bearer(token)).send({
-      typeId, ...j.wards[0].center, gpsAccuracyM: 8, landmark: 'Near Shiv Mandir', description: 'Kachra ka dher 3 din se pada hai', ...over,
-    });
+  /** Files a complaint with a verified photo taken at the complaint point. Await it, or call .expect(status). */
+  const file = (token: string, over: Record<string, unknown> = {}) => {
+    const run = async () => {
+      const point = { lat: (over.lat as number) ?? j.wards[0].center.lat, lng: (over.lng as number) ?? j.wards[0].center.lng };
+      return ctx.http().post(api('/complaints')).set(bearer(token)).send({
+        typeId, ...j.wards[0].center, gpsAccuracyM: 8, landmark: 'Near Shiv Mandir', description: 'Kachra ka dher 3 din se pada hai',
+        mediaIds: [await quickMedia(ctx, subOf(token), point)], ...over,
+      });
+    };
+    return {
+      then: <T>(onOk: (r: Response) => T, onErr?: (e: unknown) => T) => run().then(onOk, onErr),
+      expect: async (status: number) => {
+        const res = await run();
+        if (res.status !== status) throw new Error(`expected ${status}, got ${res.status}: ${JSON.stringify(res.body)}`);
+        return res;
+      },
+    };
+  };
 
   describe('filing and routing', () => {
     it('detects the ward from GPS (not the citizen\'s home ward) and routes to the area supervisor', async () => {
@@ -132,9 +147,13 @@ describe('Complaint lifecycle (M2)', () => {
 
       // Worker must start before resolving.
       await ctx.http().post(api(`/complaints/${c.id}/resolve`)).set(bearer(workerToken)).send({ remark: 'Done cleaning' }).expect(409);
-      await ctx.http().post(api(`/complaints/${c.id}/start`)).set(bearer(workerToken)).send({ location: j.wards[0].center }).expect(201);
+      // Workers must attach an in-app photo to start and to resolve.
+      await ctx.http().post(api(`/complaints/${c.id}/start`)).set(bearer(workerToken)).send({ location: j.wards[0].center }).expect(400);
+      await ctx.http().post(api(`/complaints/${c.id}/start`)).set(bearer(workerToken))
+        .send({ location: j.wards[0].center, mediaIds: [await quickMedia(ctx, worker.id, j.wards[0].center)] }).expect(201);
       const resolved = await ctx.http().post(api(`/complaints/${c.id}/resolve`)).set(bearer(workerToken))
-        .send({ remark: 'Kachra uthaya, chuna dala', location: j.wards[0].center }).expect(201);
+        .send({ remark: 'Kachra uthaya, chuna dala', location: j.wards[0].center, mediaIds: [await quickMedia(ctx, worker.id, j.wards[0].center)] })
+        .expect(201);
       expect(resolved.body).toEqual(expect.objectContaining({ status: 'RESOLVED', resolutionRemark: 'Kachra uthaya, chuna dala' }));
 
       const closed = await ctx.http().post(api(`/complaints/${c.id}/feedback`)).set(bearer(citizenToken))

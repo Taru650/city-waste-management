@@ -36,6 +36,20 @@ secret scanning (gitleaks) and container scanning (Trivy).
 | Tamper-evident history | DB triggers make `complaint_events`, `feedback`, `audit_logs` append-only (incl. TRUNCATE) | `security/audit-integrity` |
 | Audit logging | logins, lockouts, resets, MFA, admin changes with actor and IP | `security/audit-integrity` |
 
+## Media uploads (camera-only evidence)
+| Control | Implementation | Test |
+|---|---|---|
+| Only in-app captures | per-install EC P-256 key; ECDSA signature over the capture manifest | `security/media` signature tests, `capture-manifest.spec` |
+| No replay | manifest bound to mediaId + deviceId + sha256; a capture is accepted once (unique index) | `security/media` replay / duplicate |
+| No gallery or edited photos | capture ≤ 24 h old, not in the future, hash must match the signed one | `security/media` stale / future / hash mismatch |
+| No fake location | mock-location flag rejected, accuracy ≤ 100 m; distance from complaint recorded and flagged | `security/media`, `media.e2e` geofence |
+| Content-type spoofing | allow-list at upload-url; magic-byte sniffing of the stored object; image must decode | `security/media` PNG/HTML/SVG/ELF/garbage, `file-signature.spec` |
+| Resource abuse | size declared and re-checked (8 MB photo / 60 MB video), 40 MP decode limit, 30 s video limit, 20 pending uploads, daily caps, ffmpeg via argv with timeout | `security/media`, `media-processor.spec` |
+| Malware | ClamAV INSTREAM; infected → rejected and audited; scanner down → 503, retryable (fail closed) | `security/media` malware block, `malware-scanner.spec` |
+| Privacy of stored media | EXIF/GPS stripped from served copies; private bucket; 5-min signed GET URLs; listing scoped like the complaint | `media.e2e`, `security/media` |
+| Ownership | only the capturer can confirm/attach their media; devices cannot be shared across accounts | `security/media` ownership, `media.e2e` devices |
+| Revocation | device revoke, logout-all and password reset invalidate signing keys | `security/media` revocation |
+
 ## Input and transport (OWASP A03, A05, API4)
 | Control | Implementation | Test |
 |---|---|---|
@@ -55,3 +69,5 @@ secret scanning (gitleaks) and container scanning (Trivy).
 - **Key rotation:** PII key rotation (re-encrypt job) is not implemented yet (M5).
 - **DAST and pentest:** OWASP ZAP, MobSF, external pentest and CERT-In audit are scheduled in M9.
 - **CAPTCHA:** server-side verifier is implemented; the apps must send the token (M6/M7).
+- **Device attestation:** device keys are accepted without Play Integrity / App Attest verification (`integrity_verdict = UNVERIFIED`). A rooted phone could extract its key and sign arbitrary files. Add Play Integrity verification at device registration before go-live (M7).
+- **Bucket policy:** the bucket must be private with no public-read policy; this is deployment configuration (compose sets it for MinIO) and is not covered by tests.
