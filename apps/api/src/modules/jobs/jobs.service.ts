@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnApplicationBootstrap, OnModuleDestroy } from '@nestjs/common';
 import { Job, JobsOptions, Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
+import { setTimeout as sleep } from 'timers/promises';
 import { APP_CONFIG, AppConfig } from '../../config/configuration';
 
 export const QUEUES = {
@@ -135,6 +136,10 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
+    // Closing a worker whose Redis connections are still being set up leaves BullMQ emitting an
+    // unhandled "Connection is closed" after its listeners are gone (a stop seconds after a start,
+    // e.g. during a rolling deploy). Let them finish connecting first, but never wait long for it.
+    await Promise.all(this.workers.map((w) => Promise.race([w.waitUntilReady().catch(() => undefined), sleep(5_000, undefined, { ref: false })])));
     await Promise.all(this.workers.map((w) => w.close()));
     await Promise.all([...this.queues.values()].map((q) => q.close()));
     await this.connection.quit().catch(() => this.connection.disconnect());
