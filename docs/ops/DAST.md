@@ -17,7 +17,7 @@ handling; authorisation and business logic are covered by the API's own security
 |---|---|---|---|
 | 1 | Portal `/privacy` returned **500** (antd compound component used from a server component) | Low (availability, error disclosure) | **Fixed** (client component); Playwright test |
 | 2 | API `POST/DELETE /notifications/push-tokens` returned **500** for input containing NUL bytes (PostgreSQL rejects U+0000); push tokens accepted any characters up to 4,096 | Low–Medium (error-path robustness; no data exposure) | **Fixed**: a global guard refuses NUL anywhere in body/query/path with 400 (every endpoint), push tokens restricted to FCM's character set ≤ 2,048; regression tests |
-| 3 | No CSP on `/_next/static` responses | Medium per ZAP; no practical impact (CSP does not apply to script files) | **Fixed**: `default-src 'none'` on static assets |
+| 3 | No CSP on `/_next/static` responses | Medium per ZAP; no practical impact (CSP does not apply to script files) | **Fixed**: `default-src 'none'` on static assets; the confirmation scan then flagged the missing `form-action` (no `default-src` fallback), added with `base-uri`; Playwright test |
 | 4 | `style-src 'unsafe-inline'` on portal pages | Medium per ZAP | **Accepted, documented** (antd/Leaflet inject styles; scripts stay nonce-locked). Revisit with antd's CSS-in-JS nonce support |
 | 5 | Informational: "user-controllable attribute" (`/login?next=` reflected in a link), suspicious comments in minified JS, modern web app | Info | Reviewed: `next` is validated to same-origin paths and React-escaped (existing tests); comments are library code |
 
@@ -28,3 +28,9 @@ The first two runs looked clean but were **unauthenticated**: ZAP's replacer doe
 environment variables, so it sent the literal header `Bearer ${API_TOKEN}` (40,023 of 45,927 API
 requests were 401). The harness now renders the plan with real values and records coverage; a
 "clean" DAST report without coverage evidence should not be accepted.
+
+## Confirmation scan (after the fixes, same harness and policy)
+45,748 API requests over 5,143 distinct paths (same coverage as before); statuses 400 ×36,229,
+403 ×5,990, 404 ×1,234, 401 ×751, 2xx ×1,544, **5xx: none**. Alerts: **one Medium**, `style-src
+'unsafe-inline'` (accepted, #4), plus 4 informational (#5). The first confirmation pass caught a gap in
+fix #3 (`form-action` missing from the static-asset CSP); fixed and rescanned.

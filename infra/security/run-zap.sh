@@ -14,17 +14,18 @@ eval "$(node -e "import('./e2e/env.mjs').then(m => { for (const [k,v] of Object.
 node "$ROOT/apps/api/dist/main.js" > "$REPORT_DIR/api.log" 2>&1 &
 API_PID=$!
 WEB_ENV=$(node -e "import('./e2e/env.mjs').then(m => { for (const [k,v] of Object.entries(m.webEnv)) console.log(k+'='+JSON.stringify(v)) })")
-env $(echo "$WEB_ENV" | xargs) NODE_ENV=production npx next start -p 3200 > "$REPORT_DIR/web.log" 2>&1 &
+# Own process group: npx forks next-server, and killing npx alone would leave it holding :3200.
+setsid env $(echo "$WEB_ENV" | xargs) NODE_ENV=production npx next start -p 3200 > "$REPORT_DIR/web.log" 2>&1 &
 WEB_PID=$!
 node "$HERE/log-proxy.mjs" 3101 3100 "$REPORT_DIR/api-requests.csv" &
 PROXY_PID=$!
-trap 'kill $API_PID $WEB_PID $PROXY_PID 2>/dev/null || true' EXIT
+trap 'kill -- $API_PID $PROXY_PID -$WEB_PID 2>/dev/null || true' EXIT
 for _ in $(seq 1 120); do curl -sf http://127.0.0.1:3100/api/v1/health/ready >/dev/null && curl -sf -o /dev/null http://localhost:3200/login && break; sleep 0.5; done
 eval "$(node "$HERE/auth.mjs")"
 # ZAP's replacer does not expand environment variables (it sent the literal "${API_TOKEN}" in an
 # earlier run, so everything was a 401): render the plan with real values into a private file.
 PLAN=$(mktemp --suffix=.yaml); chmod 600 "$PLAN"
-trap 'kill $API_PID $WEB_PID $PROXY_PID 2>/dev/null || true; rm -f "$PLAN"' EXIT
+trap 'kill -- $API_PID $PROXY_PID -$WEB_PID 2>/dev/null || true; rm -f "$PLAN"' EXIT
 PLAN_OUT="$PLAN" PLAN_IN="$HERE/zap-plan.yaml" node "$HERE/render-plan.mjs"
 "$ZAP_HOME/zap.sh" -cmd -port 8099 -autorun "$PLAN" 2>&1 | tee "$REPORT_DIR/zap.log" | grep -E "Job .* (started|finished)|ERROR|WARN" || true
 node -e "const r=require('$REPORT_DIR/zap-report.json'); const a=r.site.flatMap(s=>s.alerts); const by={}; for (const x of a) by[x.riskdesc.split(' ')[0]]=(by[x.riskdesc.split(' ')[0]]||0)+1; console.log('alerts by risk:', JSON.stringify(by)); for (const x of a.filter(x=>!/^Informational/.test(x.riskdesc))) console.log(' -', x.riskdesc, '|', x.name, '|', x.count, 'instance(s)')"

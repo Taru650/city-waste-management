@@ -21,7 +21,7 @@ const config: NextConfig = {
       // runs inside a page, but a locked-down policy keeps any asset opened directly inert.
       // Only here: a second CSP on pages would be intersected with the nonce policy.
       ...['/_next/static', '/_next/static/:path*'].map((source) => ({
-        source, headers: [{ key: 'Content-Security-Policy', value: "default-src 'none'; frame-ancestors 'none'" }],
+        source, headers: [{ key: 'Content-Security-Policy', value: "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" }],
       })),
     ];
   },

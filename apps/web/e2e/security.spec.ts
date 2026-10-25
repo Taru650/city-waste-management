@@ -37,6 +37,13 @@ test.describe('Portal security', () => {
     expect(res!.headers()['x-powered-by']).toBeUndefined();
   });
 
+  test('static assets carry a deny-all CSP, including directives without a default-src fallback (ZAP)', async ({ page, request }) => {
+    const res = await page.goto('/login');
+    const src = (await res!.text()).match(/\/_next\/static\/[^"']+\.js/)![0];
+    const csp = (await request.get(src)).headers()['content-security-policy'];
+    for (const d of ["default-src 'none'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'"]) expect(csp).toContain(d);
+  });
+
   test('citizen-written HTML in a complaint is shown as text and never executes', async ({ page }) => {
     await login(page, 'supervisorA');
     await page.goto(`/complaints/${seed().complaints.xss.id}`);
