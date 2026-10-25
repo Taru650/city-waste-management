@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { api, qs, useApi } from '@/lib/client/api';
 import { extractPolygon, PolygonGeometry } from '@/lib/client/geojson';
 import { isAdmin, useMe } from '@/lib/client/session';
+import { PageHeader } from '@/components/PageHeader';
 
 const BoundaryMap = dynamic(() => import('@/components/BoundaryMap'), { ssr: false, loading: () => <div style={{ height: 380 }} /> });
 
@@ -51,7 +52,7 @@ export function EventZones({ tileUrl }: { tileUrl: string }) {
 
   return (
     <>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>Event zones</Typography.Title>
+      <PageHeader eyebrow="Peak events" title="Event zones" subtitle="Melas, festivals and monsoon hotspots with their own supervisor and tighter SLA" />
       <Space wrap style={{ marginBottom: 12 }}>
         <Segmented<When> value={when} onChange={setWhen} aria-label="Zone period"
           options={[{ value: 'all', label: 'All' }, { value: 'current', label: 'Running' }, { value: 'upcoming', label: 'Upcoming' }, { value: 'past', label: 'Ended' }]} />

@@ -27,6 +27,17 @@ npm run test:e2e         # Playwright: real browser + real API + PostgreSQL/Post
 The e2e run creates and seeds its own database (`cwm_e2e_test`), starts moto and Redis if
 needed, and boots the API and the production portal build on ports 3100 and 3200.
 
+## Design system
+- **Tokens** live in `src/theme.ts` (antd theme: navy structure, royal-blue actions, teal accent; green / amber / red only
+  for status) and are mirrored as CSS variables in `src/app/globals.css`. Use them instead of literal colours.
+- **Shell** (`components/AppShell.tsx`): navy sidebar from 992 px up; below that a top bar with a drawer menu. The switch
+  is done in CSS (`.app-sider`, `.hide-lg`, `.show-md`), so the first render never flashes the wrong layout.
+- **Pages** start with `components/PageHeader.tsx` (title, subtitle, actions that wrap on narrow screens). Reports add
+  `PrintHeader`, which only appears on paper (A4, page numbers via `@page`).
+- **Tables** always set `scroll.x` so they scroll inside their card; the page itself must never scroll sideways.
+- `e2e/responsive.spec.ts` enforces this at 1920, 1366, 1024, 768 and 390 px (no sideways scroll, titles not squeezed,
+  navigation reachable, print layout). `SCREENSHOTS_DIR=/tmp/shots npm run test:e2e -- responsive` saves screenshots.
+
 ## Configuration
 | Variable | Purpose |
 |---|---|

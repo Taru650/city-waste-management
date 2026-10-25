@@ -1,6 +1,6 @@
 'use client';
 
-import { DatePicker, Select, Space } from 'antd';
+import { DatePicker, Select } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import { useApi } from '@/lib/client/api';
 import { Me } from '@/lib/client/session';
@@ -40,7 +40,7 @@ export function FilterBar({ me, value, onChange, dates = true, effectiveRange }:
   const set = (patch: Filters) => onChange({ ...value, ...patch });
 
   return (
-    <Space wrap className="no-print" style={{ marginBottom: 16 }}>
+    <div className="filter-bar no-print" role="group" aria-label="Filters">
       {dates && (
         <DatePicker.RangePicker
           allowClear={false}
@@ -80,6 +80,6 @@ export function FilterBar({ me, value, onChange, dates = true, effectiveRange }:
           options={zones.map((z) => ({ value: z.id, label: `Event: ${z.name}` }))}
           onChange={(v) => set({ eventZoneId: v })} />
       )}
-    </Space>
+    </div>
   );
 }

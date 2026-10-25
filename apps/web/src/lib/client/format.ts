@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 
 export const STATUS_COLORS: Record<string, string> = {
-  PENDING: 'orange', ASSIGNED: 'blue', WORK_IN_PROGRESS: 'geekblue', RESOLVED: 'green', CLOSED: 'default',
+  PENDING: 'gold', ASSIGNED: 'blue', WORK_IN_PROGRESS: 'cyan', RESOLVED: 'green', CLOSED: 'default',
   REJECTED: 'red', DUPLICATE: 'purple', REOPENED: 'volcano',
 };
 

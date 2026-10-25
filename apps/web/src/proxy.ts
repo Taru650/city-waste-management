@@ -57,7 +57,7 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     {
-      source: '/((?!bff|_next/static|_next/image|favicon.ico|leaflet).*)',
+      source: '/((?!bff|_next/static|_next/image|favicon.ico|icon.svg|leaflet).*)',
       missing: [
         { type: 'header', key: 'next-router-prefetch' },
         { type: 'header', key: 'purpose', value: 'prefetch' },

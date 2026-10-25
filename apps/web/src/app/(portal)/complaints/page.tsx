@@ -8,6 +8,8 @@ import { Filters, FilterBar } from '@/components/FilterBar';
 import { qs, useApi } from '@/lib/client/api';
 import { fmtDateTime, STATUS_COLORS, STATUS_LABELS } from '@/lib/client/format';
 import { useMe } from '@/lib/client/session';
+import { colors } from '@/theme';
+import { PageHeader } from '@/components/PageHeader';
 
 export interface ComplaintItem {
   id: string;
@@ -43,7 +45,7 @@ function ComplaintsInbox() {
 
   return (
     <>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>Complaints</Typography.Title>
+      <PageHeader eyebrow="Grievances" title="Complaints" subtitle={data ? `${data.total.toLocaleString('en-IN')} matching complaint${data.total === 1 ? '' : 's'}` : '\u00a0'} />
       <FilterBar me={me} dates={false} value={state as Filters} onChange={(f) => setState({ ...f })} />
       <Space wrap style={{ marginBottom: 16 }}>
         <Select allowClear placeholder="Any status" style={{ width: 180 }} value={state.status} aria-label="Status filter"
@@ -59,8 +61,8 @@ function ComplaintsInbox() {
           pagination={{ current: page, pageSize: 25, total: data?.total, showSizeChanger: false, showTotal: (t) => `${t} complaints`, onChange: (p) => setState({ page: String(p) }) }}
           onRow={(r) => ({ onClick: () => router.push(`/complaints/${r.id}`), style: { cursor: 'pointer' } })}
           columns={[
-            { title: 'Complaint no.', dataIndex: 'complaintNo', render: (v, r) => <Link href={`/complaints/${r.id}`} onClick={(e) => e.stopPropagation()}>{v}</Link> },
-            { title: 'Filed', dataIndex: 'createdAt', render: fmtDateTime },
+            { title: 'Complaint no.', dataIndex: 'complaintNo', render: (v, r) => <Link className="nowrap" href={`/complaints/${r.id}`} onClick={(e) => e.stopPropagation()}>{v}</Link> },
+            { title: 'Filed', dataIndex: 'createdAt', render: (v) => <span className="nowrap">{fmtDateTime(v)}</span> },
             { title: 'Ward', render: (_, r) => (me.ulbId ? `Ward ${r.ward.number}` : `${r.ulb.name} · ${r.ward.number}`) },
             { title: 'Type', render: (_, r) => r.type.nameEn },
             { title: 'Status', dataIndex: 'status', render: (v: string, r) => (
@@ -70,7 +72,9 @@ function ComplaintsInbox() {
                 {r.wardMismatch && <Tag color="gold">Ward?</Tag>}
               </Space>
             ) },
-            { title: 'SLA due', dataIndex: 'slaDueAt', render: (v, r) => <span style={{ color: r.slaBreached ? '#cf1322' : undefined }}>{fmtDateTime(v)}</span> },
+            { title: 'SLA due', dataIndex: 'slaDueAt', render: (v, r) => (r.slaBreached
+              ? <span className="nowrap" style={{ color: colors.danger, fontWeight: 600 }}>{fmtDateTime(v)} · overdue</span>
+              : <span className="nowrap">{fmtDateTime(v)}</span>) },
             { title: 'Supervisor', render: (_, r) => r.supervisor?.name ?? '—' },
             { title: 'Worker', render: (_, r) => r.worker?.name ?? '—' },
           ]}

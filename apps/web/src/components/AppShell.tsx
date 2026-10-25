@@ -1,11 +1,13 @@
 'use client';
 
 import {
-  AlertOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined, EnvironmentOutlined, LogoutOutlined, TeamOutlined, UserOutlined,
+  AlertOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined, EnvironmentOutlined, HomeOutlined, LogoutOutlined, MenuOutlined, TeamOutlined, UserOutlined,
 } from '@ant-design/icons';
-import { Badge, Button, Dropdown, Layout, Menu, Space, Typography } from 'antd';
+import { Avatar, Badge, Breadcrumb, Button, Drawer, Dropdown, Layout, Menu } from 'antd';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
+import { Brand } from '@/components/Brand';
 import { call, useApi } from '@/lib/client/api';
 import { ROLE_LABELS } from '@/lib/client/format';
 import { isAdmin, Me, SessionProvider } from '@/lib/client/session';
@@ -13,8 +15,16 @@ import { hardNavigate } from '@/lib/client/navigate';
 
 const { Header, Sider, Content } = Layout;
 
+const SECTION_LABELS: Record<string, string> = {
+  dashboard: 'Dashboard', complaints: 'Complaints', 'event-zones': 'Event zones', masters: 'Masters', users: 'Staff',
+  notifications: 'Notifications', account: 'Account',
+};
+
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join('');
+
 export function AppShell({ me, children }: { me: Me; children: React.ReactNode }) {
   const pathname = usePathname();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const { data: unread } = useApi<{ count: number }>('/notifications/unread-count', { refreshInterval: 60_000 });
 
   const items = [
@@ -27,10 +37,23 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
           { key: '/users', icon: <TeamOutlined />, label: <Link href="/users">Staff</Link> },
         ]
       : []),
-    { key: '/notifications', icon: <BellOutlined />, label: <Link href="/notifications">Notifications</Link> },
+    {
+      key: '/notifications', icon: <BellOutlined />,
+      label: <Link href="/notifications">Notifications{unread?.count ? <Badge count={unread.count} size="small" style={{ marginLeft: 8, boxShadow: 'none' }} /> : null}</Link>,
+    },
     { key: '/account', icon: <UserOutlined />, label: <Link href="/account">Account</Link> },
   ];
   const selected = items.map((i) => i.key).filter((k) => pathname.startsWith(k));
+  // Choosing a page also closes the phone menu.
+  const nav = <Menu mode="inline" theme="dark" selectedKeys={selected} items={items} onClick={() => setDrawerOpen(false)} style={{ borderInlineEnd: 0, paddingTop: 4 }} />;
+
+  const segments = pathname.split('/').filter(Boolean);
+  const crumbs = [
+    { title: <Link href="/dashboard" aria-label="Home"><HomeOutlined /></Link> },
+    ...segments.map((s, i) => ({
+      title: i === segments.length - 1 ? (SECTION_LABELS[s] ?? 'Details') : <Link href={`/${segments.slice(0, i + 1).join('/')}`}>{SECTION_LABELS[s] ?? s}</Link>,
+    })),
+  ];
 
   const logout = async () => {
     await call('/bff/auth/logout', { method: 'POST', body: {} });
@@ -39,32 +62,42 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
 
   return (
     <SessionProvider value={me}>
+      <a href="#main" className="skip-link">Skip to main content</a>
       <Layout style={{ minHeight: '100vh' }}>
-        <Sider breakpoint="lg" collapsedWidth={0} theme="light" width={220} style={{ borderRight: '1px solid #e8e8e8' }}>
-          <div style={{ padding: '18px 20px', fontWeight: 700, fontSize: 18, color: '#1f7a4d' }}>Swachh Seva</div>
-          <Menu mode="inline" selectedKeys={selected} items={items} style={{ borderInlineEnd: 0 }} />
+        <Sider width={248} className="app-sider" style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto' }}>
+          <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 6 }}><Brand light /></div>
+          <nav aria-label="Main">{nav}</nav>
         </Sider>
+        <Drawer
+          className="app-drawer" placement="left" open={drawerOpen} onClose={() => setDrawerOpen(false)} size={280}
+          styles={{ body: { padding: 0, background: '#0b2545' }, header: { background: '#0b2545', borderBottom: '1px solid rgba(255,255,255,0.08)' } }}
+          title={<Brand light />} closeIcon={<span style={{ color: '#c7d2e3' }}>✕</span>}
+        >
+          <nav aria-label="Main">{nav}</nav>
+        </Drawer>
         <Layout>
-          <Header style={{ background: '#fff', padding: '0 20px', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', borderBottom: '1px solid #e8e8e8' }}>
-            <Space size="large">
-              <Link href="/notifications" aria-label="Notifications">
-                <Badge count={unread?.count ?? 0} size="small"><BellOutlined style={{ fontSize: 18 }} /></Badge>
-              </Link>
-              <Dropdown menu={{ items: [
-                { key: 'account', label: <Link href="/account">Account</Link> },
-                { key: 'logout', icon: <LogoutOutlined />, label: 'Sign out', onClick: logout },
-              ] }}>
-                <Button type="text" data-testid="user-menu">
-                  <Space size={4}>
-                    <UserOutlined />
-                    <span>{me.name}</span>
-                    <Typography.Text type="secondary">· {ROLE_LABELS[me.role]}</Typography.Text>
-                  </Space>
-                </Button>
-              </Dropdown>
-            </Space>
+          <Header className="app-header" style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 20 }}>
+            <Button className="hide-lg" type="text" icon={<MenuOutlined style={{ fontSize: 18 }} />} aria-label="Open menu" onClick={() => setDrawerOpen(true)} />
+            <div className="hide-lg" style={{ minWidth: 0 }}><Brand compact /></div>
+            <Breadcrumb className="show-md" items={crumbs} />
+            <div style={{ flex: 1 }} />
+            <Link href="/notifications" aria-label={`Notifications${unread?.count ? `, ${unread.count} unread` : ''}`} style={{ display: 'grid', placeItems: 'center', width: 40, height: 40, borderRadius: 8 }}>
+              <Badge count={unread?.count ?? 0} size="small"><BellOutlined style={{ fontSize: 19, color: '#13315c' }} /></Badge>
+            </Link>
+            <Dropdown trigger={['hover', 'click']} menu={{ items: [
+              { key: 'account', label: <Link href="/account">Account</Link> },
+              { key: 'logout', icon: <LogoutOutlined />, label: 'Sign out', onClick: logout },
+            ] }}>
+              <Button type="text" data-testid="user-menu" style={{ height: 44, paddingInline: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Avatar size={32} style={{ background: '#0f8b8d', fontWeight: 600, fontSize: 13 }}>{initials(me.name)}</Avatar>
+                <span className="show-md" style={{ textAlign: 'left', lineHeight: 1.2 }}>
+                  <span style={{ display: 'block', fontWeight: 600, color: '#0f172a' }}>{me.name}</span>
+                  <span style={{ display: 'block', fontSize: 12, color: '#475569' }}>{ROLE_LABELS[me.role]}</span>
+                </span>
+              </Button>
+            </Dropdown>
           </Header>
-          <Content style={{ margin: 20 }}>{children}</Content>
+          <Content id="main" tabIndex={-1} style={{ padding: 'var(--gutter)', outline: 'none', width: '100%', maxWidth: 1600, marginInline: 'auto' }}>{children}</Content>
         </Layout>
       </Layout>
     </SessionProvider>

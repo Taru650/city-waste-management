@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { api, useApi } from '@/lib/client/api';
 import { extractPolygon, PolygonGeometry } from '@/lib/client/geojson';
 import { Me, useMe } from '@/lib/client/session';
+import { PageHeader } from '@/components/PageHeader';
 
 const BoundaryMap = dynamic(() => import('@/components/BoundaryMap'), { ssr: false, loading: () => <div style={{ height: 380 }} /> });
 
@@ -30,7 +31,7 @@ export function Masters({ tileUrl }: { tileUrl: string }) {
   ];
   return (
     <>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>Masters</Typography.Title>
+      <PageHeader eyebrow="Administration" title="Masters" subtitle="Jurisdictions, ward boundaries, areas and complaint types" />
       <Tabs items={tabs} />
     </>
   );
@@ -85,7 +86,7 @@ function UlbsTab({ me }: { me: Me }) {
         )}
         <Button type="primary" disabled={!districtId} onClick={() => setModal('ulb')}>Add ULB</Button>
       </Space>
-      <Table<Ulb> size="small" rowKey="id" dataSource={ulbs} pagination={false}
+      <Table<Ulb> size="small" rowKey="id" dataSource={ulbs} pagination={false} scroll={{ x: 'max-content' }}
         columns={[
           { title: 'ULB', dataIndex: 'name' },
           { title: 'Type', dataIndex: 'type', render: (v) => ULB_TYPES.find((t) => t.value === v)?.label },
@@ -136,7 +137,7 @@ function WardsTab({ me, tileUrl }: { me: Me; tileUrl: string }) {
           <Space style={{ marginBottom: 12 }}><Button type="primary" onClick={() => setEditing('new')}>Add ward</Button></Space>
           <Alert type="info" showIcon style={{ marginBottom: 12 }}
             title="Ward boundaries drive automatic routing: a complaint's GPS point decides its ward. Wards without a boundary can only be chosen manually by citizens." />
-          <Table<Ward> size="small" rowKey="id" dataSource={wards} pagination={false}
+          <Table<Ward> size="small" rowKey="id" dataSource={wards} pagination={false} scroll={{ x: 'max-content' }}
             columns={[
               { title: 'Ward', dataIndex: 'number', width: 80 },
               { title: 'Name', dataIndex: 'name', render: (v) => v ?? '—' },
@@ -198,7 +199,7 @@ function AreasTab({ me }: { me: Me }) {
       {ulbId && (
         <>
           <Space style={{ marginBottom: 12 }}><Button type="primary" onClick={() => setEditing('new')}>Add area</Button></Space>
-          <Table<Area> size="small" rowKey="id" dataSource={areas} pagination={false}
+          <Table<Area> size="small" rowKey="id" dataSource={areas} pagination={false} scroll={{ x: 'max-content' }}
             columns={[
               { title: 'Area', dataIndex: 'name' },
               { title: 'Supervisor', dataIndex: 'supervisorName', render: (v) => v ?? <Tag color="orange">None — complaints go to Sub Admin</Tag> },
@@ -236,7 +237,7 @@ function TypesTab() {
   };
   return (
     <Card size="small">
-      <Table<CType> size="small" rowKey="id" dataSource={data} pagination={false}
+      <Table<CType> size="small" rowKey="id" dataSource={data} pagination={false} scroll={{ x: 'max-content' }}
         columns={[
           { title: 'Type', render: (_, t) => <>{t.nameEn}<Typography.Text type="secondary"> · {t.nameHi}</Typography.Text></> },
           { title: 'SLA (hours)', dataIndex: 'slaHours', render: (v, t) => (

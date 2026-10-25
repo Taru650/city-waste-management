@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { api, qs, useApi } from '@/lib/client/api';
 import { ROLE_LABELS } from '@/lib/client/format';
 import { useMe } from '@/lib/client/session';
+import { PageHeader } from '@/components/PageHeader';
 
 interface Staff { id: string; role: string; status: string; name: string; mobile: string; districtId: string | null; ulbId: string | null; mfaEnabled: boolean; lastLoginAt: string | null; accessExpiresAt: string | null }
 
@@ -61,7 +62,7 @@ export default function StaffPage() {
 
   return (
     <>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>Staff</Typography.Title>
+      <PageHeader eyebrow="Administration" title="Staff" subtitle="Officers, supervisors and field workers in your jurisdiction" />
       <Space wrap style={{ marginBottom: 12 }}>
         <Select allowClear placeholder="All roles" style={{ width: 200 }} value={role} onChange={setRole}
           options={['DISTRICT_ADMIN', 'SUB_ADMIN', 'SUPERVISOR', 'WORKER'].map((r) => ({ value: r, label: ROLE_LABELS[r] }))} />

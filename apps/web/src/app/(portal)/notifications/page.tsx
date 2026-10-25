@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { api, qs, useApi } from '@/lib/client/api';
 import { fmtDateTime } from '@/lib/client/format';
+import { PageHeader } from '@/components/PageHeader';
 
 interface Note { id: string; type: string; complaintId: string | null; title: string; body: string; readAt: string | null; createdAt: string }
 
@@ -19,10 +20,8 @@ export default function NotificationsPage() {
   };
   return (
     <>
-      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Typography.Title level={3} style={{ marginTop: 0 }}>Notifications</Typography.Title>
-        <Button onClick={async () => { await api('/notifications/read-all', { method: 'POST', body: {} }); await mutate(); }}>Mark all read</Button>
-      </Space>
+      <PageHeader eyebrow="Inbox" title="Notifications" subtitle="Assignments, SLA alerts and escalations for you"
+        actions={<Button onClick={async () => { await api('/notifications/read-all', { method: 'POST', body: {} }); await mutate(); }}>Mark all read</Button>} />
       <Card size="small">
         <List<Note> dataSource={data?.items} data-testid="notifications"
           pagination={{ current: page, pageSize: 20, total: data?.total, onChange: setPage, hideOnSinglePage: true }}

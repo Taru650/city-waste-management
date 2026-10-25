@@ -7,6 +7,7 @@ import { api, call } from '@/lib/client/api';
 import { ROLE_LABELS } from '@/lib/client/format';
 import { useMe } from '@/lib/client/session';
 import { hardNavigate } from '@/lib/client/navigate';
+import { PageHeader } from '@/components/PageHeader';
 
 function Account() {
   const me = useMe();
@@ -30,7 +31,7 @@ function Account() {
 
   return (
     <>
-      <Typography.Title level={3} style={{ marginTop: 0 }}>Account</Typography.Title>
+      <PageHeader eyebrow="Your profile" title="Account" subtitle="Password, two-step verification and preferences" />
       {mustChange && <Alert type="warning" showIcon style={{ marginBottom: 16 }} title="Set your own password to continue. The temporary password stops working once you do." data-testid="must-change" />}
       <Row gutter={[12, 12]}>
         <Col xs={24} lg={12}>
