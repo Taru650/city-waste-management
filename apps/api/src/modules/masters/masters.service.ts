@@ -12,6 +12,12 @@ import {
 
 /** PostgreSQL unique_violation */
 const UNIQUE_VIOLATION = '23505';
+/**
+ * Wards of one ULB may share edges but not area: a GPS point inside two wards would be routed to
+ * either supervisor. Slivers up to this size are tolerated, because boundaries digitised by hand
+ * rarely meet exactly.
+ */
+export const WARD_OVERLAP_TOLERANCE_M2 = 100;
 
 @Injectable()
 export class MastersService {
@@ -73,7 +79,7 @@ export class MastersService {
               d.id AS "districtId", d.name AS "districtName"
          FROM wards w JOIN ulbs u ON u.id = w.ulb_id JOIN districts d ON d.id = u.district_id
         WHERE w.active AND u.active AND ST_Contains(w.geom, ST_SetSRID(ST_MakePoint($2, $1), 4326))
-        LIMIT 1`,
+        ORDER BY w.id LIMIT 1`,
       [lat, lng],
     );
     if (!row) throw new NotFoundException('No ward boundary covers this location; choose the ward manually');
@@ -118,7 +124,10 @@ export class MastersService {
       const [row] = await this.unique(() =>
         m.query(`INSERT INTO wards (ulb_id, number, name) VALUES ($1,$2,$3) RETURNING id`, [dto.ulbId, dto.number, dto.name ?? null]),
       );
-      if (dto.boundary) await this.setGeom(m, 'wards', row.id, dto.boundary);
+      if (dto.boundary) {
+        await this.setGeom(m, 'wards', row.id, dto.boundary);
+        await this.assertNoWardOverlap(m, row.id);
+      }
       await this.audit.log({ actorId: user.id, action: 'WARD_CREATED', entity: 'ward', entityId: row.id, meta: { ulbId: dto.ulbId, number: dto.number } }, m);
       return row;
     });
@@ -132,6 +141,8 @@ export class MastersService {
       if (dto.name !== undefined) await m.query(`UPDATE wards SET name = $2 WHERE id = $1`, [wardId, dto.name]);
       if (dto.active !== undefined) await m.query(`UPDATE wards SET active = $2 WHERE id = $1`, [wardId, dto.active]);
       if (dto.boundary) await this.setGeom(m, 'wards', wardId, dto.boundary);
+      // A new boundary, or a ward switched back on, must not cover another active ward.
+      if (dto.boundary || dto.active === true) await this.assertNoWardOverlap(m, wardId);
       await this.audit.log({ actorId: user.id, action: 'WARD_UPDATED', entity: 'ward', entityId: wardId, meta: { ...dto, boundary: !!dto.boundary } }, m);
     });
     return { id: wardId };
@@ -203,6 +214,24 @@ export class MastersService {
     );
     if (!check.valid) throw new BadRequestException('Boundary polygon is not valid (self-intersecting or unclosed ring)');
     await m.query(`UPDATE ${table} SET geom = ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($2), 4326)) WHERE id = $1`, [id, JSON.stringify(geo)]);
+  }
+
+  /** Checks the ward's saved state inside the caller's transaction; throwing rolls the change back. */
+  private async assertNoWardOverlap(m: EntityManager, wardId: string) {
+    // One boundary change per ULB at a time, so two overlapping uploads cannot both pass.
+    await m.query(`SELECT 1 FROM ulbs WHERE id = (SELECT ulb_id FROM wards WHERE id = $1) FOR UPDATE`, [wardId]);
+    const overlaps: { number: string; overlap_m2: number }[] = await m.query(
+      `SELECT o.number, round(ST_Area(ST_Intersection(w.geom, o.geom)::geography))::float AS overlap_m2
+         FROM wards w JOIN wards o ON o.ulb_id = w.ulb_id AND o.id <> w.id AND o.active AND o.geom IS NOT NULL
+        WHERE w.id = $1 AND w.active AND w.geom IS NOT NULL AND ST_Intersects(w.geom, o.geom)
+          AND ST_Area(ST_Intersection(w.geom, o.geom)::geography) > $2
+        ORDER BY overlap_m2 DESC, o.number LIMIT 5`,
+      [wardId, WARD_OVERLAP_TOLERANCE_M2],
+    );
+    if (overlaps.length) {
+      const list = overlaps.map((o) => `ward ${o.number} (${o.overlap_m2.toLocaleString('en-IN')} m²)`).join(', ');
+      throw new BadRequestException(`Boundary overlaps ${list}. Wards of a ULB must not overlap; fix the boundaries and upload again.`);
+    }
   }
 
   private async assignWards(m: EntityManager, areaId: string, ulbId: string, wardIds: string[]) {

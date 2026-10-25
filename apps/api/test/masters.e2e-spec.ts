@@ -67,6 +67,66 @@ describe('Masters: districts, ULBs, wards, areas (M2)', () => {
     await ctx.http().patch(api(`/masters/wards/${created.body.id}`)).set(bearer(subAdmin)).send({ boundary: bowtie }).expect(400);
   });
 
+  describe('ward boundaries must not overlap within a ULB', () => {
+    let k: Jurisdiction;
+    let lat: number;
+    let lng: number;
+    const ward = (number: number, boundary: object) =>
+      ctx.http().post(api('/masters/wards')).set(bearer(subAdmin)).send({ ulbId: k.ulbId, number, boundary });
+    beforeAll(async () => {
+      // Two adjacent 0.01° (~1.1 km) wards, numbered 1 and 2, in a fresh region of the Sub Admin's ULB.
+      k = await createJurisdiction(ctx.ds);
+      await ctx.ds.query(`UPDATE wards SET ulb_id = $1, number = number + 900 WHERE id = ANY($2)`, [j.ulbId, k.wards.map((w) => w.id)]);
+      k = { ...k, ulbId: j.ulbId };
+      ({ lat, lng } = { lat: k.wards[0].center.lat - 0.005, lng: k.wards[0].center.lng - 0.005 });
+    });
+
+    it('refuses a boundary covering part of another ward and says which', async () => {
+      const res = await ward(960, square(lat, lng + 0.005)).expect(400);
+      expect(res.body.message).toMatch(/overlaps ward 901 \([\d,]+ m²\), ward 902 \([\d,]+ m²\)/);
+      expect(await ctx.ds.query(`SELECT 1 FROM wards WHERE ulb_id = $1 AND number = '960'`, [j.ulbId])).toEqual([]);
+    });
+
+    it('accepts wards that only share an edge, or overlap by a hand-drawing sliver', async () => {
+      await ward(961, square(lat, lng + 0.02)).expect(201); // shares ward 902's east edge
+      // ~0.05 m x 1.1 km ≈ 60 m² over ward 961: under the 100 m² tolerance.
+      await ward(962, square(lat, lng + 0.03 - 0.0000005)).expect(201);
+    });
+
+    it('a new boundary on an existing ward is checked too, and a refused change is rolled back', async () => {
+      const [w901] = await ctx.ds.query(`SELECT id, ST_AsText(geom) AS geom FROM wards WHERE ulb_id = $1 AND number = '901'`, [j.ulbId]);
+      await ctx.http().patch(api(`/masters/wards/${w901.id}`)).set(bearer(subAdmin)).send({ boundary: square(lat, lng + 0.002) }).expect(400);
+      const [after] = await ctx.ds.query(`SELECT ST_AsText(geom) AS geom FROM wards WHERE id = $1`, [w901.id]);
+      expect(after.geom).toBe(w901.geom);
+    });
+
+    it('inactive wards do not block, but switching one back on is checked', async () => {
+      const w902 = k.wards[1].id;
+      await ctx.http().patch(api(`/masters/wards/${w902}`)).set(bearer(subAdmin)).send({ active: false }).expect(200);
+      await ward(963, square(lat, lng + 0.01)).expect(201); // exactly where the inactive ward 902 was
+      await ctx.http().patch(api(`/masters/wards/${w902}`)).set(bearer(subAdmin)).send({ active: true }).expect(400);
+      const [{ active }] = await ctx.ds.query(`SELECT active FROM wards WHERE id = $1`, [w902]);
+      expect(active).toBe(false);
+    });
+
+    it('where legacy wards overlap, GPS lookup always picks the same ward', async () => {
+      // Data loaded before this check could still overlap: the answer must not change between calls.
+      const [{ id: a }] = await ctx.ds.query(
+        `INSERT INTO wards (ulb_id, number, geom) VALUES ($1, '970', ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($2), 4326))) RETURNING id`,
+        [j.ulbId, JSON.stringify(square(lat + 0.03, lng))],
+      );
+      const [{ id: b }] = await ctx.ds.query(
+        `INSERT INTO wards (ulb_id, number, geom) VALUES ($1, '971', ST_Multi(ST_SetSRID(ST_GeomFromGeoJSON($2), 4326))) RETURNING id`,
+        [j.ulbId, JSON.stringify(square(lat + 0.03, lng))],
+      );
+      const expected = [a, b].sort()[0];
+      for (let i = 0; i < 5; i++) {
+        const res = await ctx.http().get(api('/masters/locate')).query({ lat: lat + 0.035, lng: lng + 0.005 }).set(bearer(subAdmin)).expect(200);
+        expect(res.body.wardId).toBe(expected);
+      }
+    });
+  });
+
   it('Sub Admin creates an area with wards and a supervisor of the same ULB', async () => {
     const sup = await createUser(ctx, Role.SUPERVISOR, j);
     const otherSup = await createUser(ctx, Role.SUPERVISOR, other);

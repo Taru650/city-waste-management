@@ -486,7 +486,7 @@ export class ComplaintsService {
       if (!ward) throw new BadRequestException('Unknown ward');
       return { ...ward, source: WardSource.MANUAL };
     }
-    const [ward] = await this.ds.query(`${base}, false AS mismatch ${joins} AND ST_Contains(w.geom, ${point}) LIMIT 1`, [dto.lat, dto.lng]);
+    const [ward] = await this.ds.query(`${base}, false AS mismatch ${joins} AND ST_Contains(w.geom, ${point}) ORDER BY w.id LIMIT 1`, [dto.lat, dto.lng]);
     if (!ward) throw new BadRequestException('Could not detect the ward from GPS; please choose District, ULB and Ward');
     return { ...ward, source: WardSource.GPS };
   }
