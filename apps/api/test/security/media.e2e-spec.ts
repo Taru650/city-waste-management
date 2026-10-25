@@ -183,7 +183,9 @@ describe('Security: media uploads', () => {
       const req = () => ctx.http().post(api('/media/upload-url')).set(bearer(token))
         .send({ deviceId: device.id, kind: 'PHOTO', contentType: 'image/jpeg', bytes: 1000, sha256: 'f'.repeat(64) });
       for (let i = 0; i < 20; i++) await req().expect(201);
-      await req().expect(429);
+      const res = await req().expect(429);
+      // The apps show `message` to the user.
+      expect(res.body).toEqual({ statusCode: 429, message: 'Too many unfinished uploads' });
     });
   });
 });

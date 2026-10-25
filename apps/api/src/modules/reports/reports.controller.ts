@@ -8,6 +8,7 @@ import { Role } from '../../common/enums';
 import { AuditService } from '../audit/audit.service';
 import { ClientInfo } from '../auth/session.service';
 import { AgeingQuery, BreakdownQuery, ExportQuery, ReportFilterQuery } from './dto/reports.dto';
+import { ExportSlots } from './export-slots';
 import { Column, toCsv, toXlsx } from './report-export';
 import { ReportsService } from './reports.service';
 
@@ -43,6 +44,8 @@ const COMPLAINT_COLUMNS: Column[] = [
 @Roles(Role.WEB_ADMIN, Role.DISTRICT_ADMIN, Role.SUB_ADMIN, Role.SUPERVISOR)
 @Controller('reports')
 export class ReportsController {
+  readonly exportSlots = new ExportSlots();
+
   constructor(private readonly reports: ReportsService, private readonly audit: AuditService) {}
 
   @Get('summary')
@@ -72,6 +75,15 @@ export class ReportsController {
 
   @Get('export')
   async export(@CurrentUser() user: AuthUser, @Query() q: ExportQuery, @Client() client: ClientInfo, @Res() res: Response) {
+    const release = this.exportSlots.acquire(user.id);
+    try {
+      await this.writeExport(user, q, client, res);
+    } finally {
+      release();
+    }
+  }
+
+  private async writeExport(user: AuthUser, q: ExportQuery, client: ClientInfo, res: Response) {
     let title: string;
     let columns: Column[];
     let rows: Record<string, unknown>[];

@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { randomInt } from 'crypto';
 import { Role } from '../src/common/enums';
+import { ReportsController } from '../src/modules/reports/reports.controller';
 import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, TestCtx, TestUser, tokenFor } from './helpers';
 
 /**
@@ -181,6 +182,21 @@ describe('Reports (M5/M6)', () => {
       expect(res.text.replace(/^\uFEFF/, '').split('\r\n')).toEqual([
         'Date,Received,Resolved,Pending at day end', '2026-10-01,2,1,1', '2026-10-02,1,0,2', '2026-10-03,1,1,1',
       ]);
+    });
+
+    it('one export at a time per user; the slot is freed afterwards, even when the export fails', async () => {
+      const slots = ctx.app.get(ReportsController).exportSlots;
+      const subAdminId = JSON.parse(Buffer.from(token.subAdmin.split('.')[1], 'base64url').toString()).sub;
+      const release = slots.acquire(subAdminId); // an export of this user is still being built
+      const busy = await get('/reports/export', 'subAdmin', { ...range, report: 'trend', format: 'csv' }).expect(429);
+      expect(busy.body).toEqual({ statusCode: 429, message: expect.stringMatching(/previous export/) });
+      // Other users are not blocked by it.
+      await get('/reports/export', 'districtAdmin', { ...range, report: 'trend', format: 'csv' }).expect(200);
+      release();
+      await get('/reports/export', 'subAdmin', { ...range, report: 'trend', format: 'csv' }).expect(200);
+      // A rejected export (range too long) must not keep the slot.
+      await get('/reports/export', 'subAdmin', { from: '2024-01-01', to: '2026-10-03', report: 'complaints', format: 'xlsx' }).expect(400);
+      expect(slots.inUse).toBe(0);
     });
   });
 });

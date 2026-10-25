@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { PassThrough } from 'node:stream';
 import { safeCell } from './report-range';
 
 export interface Column {
@@ -17,21 +18,44 @@ export function toCsv(columns: Column[], rows: Record<string, unknown>[]): Buffe
   return Buffer.concat([Buffer.from('﻿'), Buffer.from(lines.join('\r\n'), 'utf8')]);
 }
 
+/** Rows written between pauses that let other requests run (one export must not stall the API). */
+const XLSX_ROWS_PER_SLICE = 500;
+
+/**
+ * Excel through ExcelJS's streaming writer: rows are serialised as they are added, with inline
+ * strings, instead of building the whole workbook model in memory first. A 50 000-row export used
+ * ~1.1 GB and blocked the event loop for ~8 s that way (docs/ops/AUDIT-2026-10.md).
+ */
 export async function toXlsx(title: string, subtitle: string, columns: Column[], rows: Record<string, unknown>[]): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook();
+  const out = new PassThrough();
+  const chunks: Buffer[] = [];
+  out.on('data', (c: Buffer) => chunks.push(c));
+  const done = new Promise<void>((resolve, reject) => { out.on('end', resolve); out.on('error', reject); });
+
+  const wb = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: out, useStyles: true, useSharedStrings: false });
   wb.creator = 'City Waste Management';
   wb.created = new Date();
-  const ws = wb.addWorksheet(title.slice(0, 31));
-  ws.addRow([title]).font = { bold: true, size: 14 };
-  ws.addRow([subtitle]).font = { italic: true, color: { argb: 'FF666666' } };
-  ws.addRow([]);
+  const ws = wb.addWorksheet(title.slice(0, 31), { views: [{ state: 'frozen', ySplit: 4 }] });
+  ws.columns = columns.map((c) => ({ width: c.width ?? Math.max(12, c.header.length + 2) }));
+  const titleRow = ws.addRow([title]);
+  titleRow.font = { bold: true, size: 14 };
+  titleRow.commit();
+  const subtitleRow = ws.addRow([subtitle]);
+  subtitleRow.font = { italic: true, color: { argb: 'FF666666' } };
+  subtitleRow.commit();
+  ws.addRow([]).commit();
   const header = ws.addRow(columns.map((c) => c.header));
   header.font = { bold: true };
   header.eachCell((cell) => {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0EA' } };
   });
-  columns.forEach((c, i) => (ws.getColumn(i + 1).width = c.width ?? Math.max(12, c.header.length + 2)));
-  for (const r of rows) ws.addRow(columns.map((c) => safeCell(r[c.key] ?? null)));
-  ws.views = [{ state: 'frozen', ySplit: 4 }];
-  return Buffer.from(await wb.xlsx.writeBuffer());
+  header.commit();
+  for (let i = 0; i < rows.length; i++) {
+    ws.addRow(columns.map((c) => safeCell(rows[i][c.key] ?? null))).commit();
+    if ((i + 1) % XLSX_ROWS_PER_SLICE === 0) await new Promise((r) => setImmediate(r));
+  }
+  ws.commit();
+  await wb.commit();
+  await done;
+  return Buffer.concat(chunks);
 }

@@ -15,7 +15,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return res.status(HttpStatus.TOO_MANY_REQUESTS).json({ statusCode: 429, message: 'Too many requests' });
     }
     if (exception instanceof HttpException) {
-      return res.status(exception.getStatus()).json(exception.getResponse());
+      const body = exception.getResponse();
+      // Clients read `message`; `new HttpException('text', status)` would otherwise send a bare string.
+      return res.status(exception.getStatus()).json(typeof body === 'string' ? { statusCode: exception.getStatus(), message: body } : body);
     }
     const err = exception as { type?: string; status?: number };
     // body-parser errors (payload too large, malformed JSON) carry their own status.

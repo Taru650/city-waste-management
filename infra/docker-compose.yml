@@ -78,6 +78,10 @@ services:
     tmpfs: [/tmp]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+    # A runaway request is killed and restarted instead of taking the host down. Measured headroom:
+    # a 50 000-row Excel export peaks at ~85 MB, and at most two run at once (export-slots.ts).
+    mem_limit: 1g
+    restart: unless-stopped
 
   # Officials' web portal. Must sit behind the TLS/WAF proxy (nginx), never exposed directly:
   # it forwards the client IP from X-Forwarded-For to the API for rate limits and audit logs.
@@ -94,6 +98,8 @@ services:
     tmpfs: [/tmp, /app/.next/cache]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+    mem_limit: 512m
+    restart: unless-stopped
 
   # Schema migrations before the API and workers start (idempotent; the image has no npm or ts-node).
   # First Web Admin, once: docker compose run --rm -e SEED_ADMIN_MOBILE=… -e SEED_ADMIN_EMAIL=… \
@@ -119,6 +125,8 @@ services:
     ports: []
     healthcheck:
       disable: true
+    # FFmpeg (720p H.264) and libvips run here, so more room than the API.
+    mem_limit: 2g
 
 volumes:
   dbdata:
