@@ -94,6 +94,18 @@ describe('SLA enforcement and escalation (M4)', () => {
     expect(row).toEqual({ sla_breached_at: null, escalated_at: null });
   });
 
+  it('open=true lists only complaints still being worked on', async () => {
+    const open = await file();
+    const done = await file();
+    const supToken = await tokenFor(ctx, supervisor);
+    await ctx.http().post(api(`/complaints/${done.id}/resolve`)).set(bearer(supToken)).send({ remark: 'Cleaned the spot' }).expect(201);
+    const r = await ctx.http().get(api('/complaints')).query({ open: 'true', pageSize: 100 }).set(bearer(supToken)).expect(200);
+    const ids = r.body.items.map((x: { id: string }) => x.id);
+    expect(ids).toContain(open.id);
+    expect(ids).not.toContain(done.id);
+    expect(r.body.items.every((x: { status: string }) => ['PENDING', 'ASSIGNED', 'WORK_IN_PROGRESS', 'REOPENED'].includes(x.status))).toBe(true);
+  });
+
   it('a reopen restarts the SLA clock', async () => {
     const c = await file();
     await age(c.id, slaHours + 1);

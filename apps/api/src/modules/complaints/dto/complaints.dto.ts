@@ -128,6 +128,10 @@ export class ListComplaintsQuery {
   @IsOptional() @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value)) @IsBoolean()
   escalated?: boolean;
 
+  @ApiPropertyOptional({ description: 'Only complaints still being worked on (PENDING, ASSIGNED, WORK_IN_PROGRESS, REOPENED)' })
+  @IsOptional() @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value)) @IsBoolean()
+  open?: boolean;
+
   @ApiPropertyOptional({ description: 'Open and past the SLA deadline' })
   @IsOptional() @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value)) @IsBoolean()
   overdue?: boolean;

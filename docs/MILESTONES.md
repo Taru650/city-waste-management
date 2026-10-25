@@ -11,8 +11,8 @@ security) pass in CI. The next milestone does not start until then.
 | M4 | SLA timers, escalation, auto-close job, push notifications | ✅ Done |
 | M5 | Reports and analytics (pendency, ageing, disposal time, quality, exports) | ✅ Done (with M6) |
 | M6 | Next.js web portal (admins, supervisors) | ✅ Done |
-| M7 | Flutter Citizen app and Staff app | ⏭ Next |
-| M8 | Event zones, worker offline sync, load test (k6, 10× peak) | Planned |
+| M7 | Flutter Citizen app and Staff app | ✅ Done (code + tests; not yet run on a phone, see below) |
+| M8 | Event zones, load test (k6, 10× peak), device attestation + app CAPTCHA, first device tests | ⏭ Next |
 | M9 | Security sign-off: DAST (OWASP ZAP), MobSF, external pentest, CERT-In audit, pilot ULB | Planned |
 
 ---
@@ -96,13 +96,43 @@ Built together on request, so reports were shaped by real screens rather than te
 
 **Exit criteria (met):** API `test/reports` (11 exact-number tests), new masters/users endpoints; portal unit tests (45: CSRF, proxy rules incl. bypass attempts, single-flight refresh, open-redirect guard, GeoJSON); **30 Playwright tests in a real browser against the real API**, green on repeated runs, including 8 portal security tests and a time-zone regression test.
 
-## M7 — Flutter apps
-- Citizen: register, file with in-app camera only, track, before/after, feedback.
-- Staff: tasks, navigate, start/resolve with camera, offline queue, Hindi UI.
-- **Tests:** flutter_test, integration on low-end Android over 3G, MobSF scan, certificate pinning, root detection.
+## M7 — Flutter apps ✅ (not yet run on a phone)
+Shared code in `packages/flutter_core`; two apps, `apps/mobile_citizen` (Swachh Seva) and `apps/mobile_staff` (Swachh Seva Staff). Both use the same REST API as the portal; the only API addition was `GET /complaints?open=true` for the staff inbox.
+
+**flutter_core**
+- API client (dio): single-flight refresh on 401, session-expired stream, optional certificate pinning (SPKI SHA-256, `CERT_PINS`); release builds refuse to start without HTTPS and pins.
+- Tokens in `flutter_secure_storage` (Android Keystore-backed; iOS `first_unlock_this_device`).
+- Camera-only capture screen (`camera` plugin; no gallery, no file picker anywhere): shutter blocked until GPS accuracy ≤ 50 m and the fix is not mocked; video ≤ 30 s; compression on the phone (photo short edge 1440 px q80 without EXIF, video 720p) before upload.
+- Capture signing: EC P-256 key generated in Android Keystore (StrongBox when available), non-exportable; manifest per [`MEDIA_CAPTURE_CONTRACT.md`](MEDIA_CAPTURE_CONTRACT.md).
+- Offline outbox: complaint filing, start-work and resolve are queued with their captures and sent when online; uploaded media ids are remembered so a retry never uploads twice; definite refusals are shown with the server's reason; captures older than 23 h are marked expired. Cleared at sign-out (queued proof belongs to the account that captured it).
+- Hindi (default) and English strings.
+
+**Citizen app:** register (district → ULB → ward, no OTP), sign in, forgot password, file a complaint anywhere (ward from GPS, manual district/ULB/ward when no boundary covers the point, never the home ward), my complaints, track by number, before/after evidence, timeline, 1–5 rating with remark and reopen (1–2 stars, within 7 days), notifications, language.
+
+**Staff app:** sign-in for supervisors and workers only (administrators and citizens are sent to the right app), forced change of a temporary password before anything else, root/tamper check on start. Workers: open tasks, navigate (maps app), start work and resolve with camera proof and GPS, offline. Supervisors: area inbox with status / overdue filters, assign a worker (with open-task counts), reject with reason, start/resolve. Buttons follow the API state machine; queued work hides them to prevent double submission.
+
+**Android hardening (both apps):** only INTERNET, CAMERA, RECORD_AUDIO and location permissions; storage and media-read permissions explicitly removed even if a plugin merges them; `allowBackup=false` and data-extraction rules exclude everything; cleartext disabled and user-installed CAs not trusted in release (debug allows `10.0.2.2` only); R8 minify + resource shrinking; release signing only from a git-ignored `key.properties` (no debug-key fallback); minSdk 24.
+
+**Bugs found and fixed while building**
+- Staff on a temporary password could not sign in: the app registered its device key straight after login, which the API refuses until the password is changed. Registration now waits; proved against the real API.
+- Offline proof could be sent under the wrong account after a sign-out/sign-in on a shared phone. Sign-out now warns about unsent items and clears the queue.
+- After queuing proof without signal, the task screen replaced the task with an error. It now keeps the last loaded copy with an offline banner.
+
+**Exit criteria (met here)**
+- `flutter analyze` clean for all three packages.
+- `flutter_core` 27 unit tests (client refresh/pinning against a real certificate, signer, uploader, outbox incl. clear, GPS gate, strings, integrity channel).
+- Citizen app 8 and Staff app 8 widget tests (whole screens against a fake API, real JPEG captures and real signing).
+- **Contract test, 9 tests: the real Dart client against the real API** (PostGIS, Redis, S3 emulator): registration, signed capture accepted, GPS routing, assign, start/resolve through the outbox, before/after and feedback, unsigned/mocked/stale captures refused, token refresh, temporary-password flow, `open=true`, administrators blocked.
+- CI job `mobile` runs all of the above plus manifest checks (no storage permissions, no backup, no cleartext, no picker packages).
+
+**Not done in M7 (carried to M8)**
+- No APK was built and nothing has run on a phone or emulator: the Android SDK download host is blocked in the build environment. The Kotlin (Keystore signing, root checks) and Gradle changes are therefore uncompiled. First action of M8: build in CI with the Android SDK and test on a low-end phone over 3G.
+- App CAPTCHA (production blocker, see SECURITY.md); Play Integrity; push notifications (needs the Firebase project files); iOS Secure Enclave signing (Android-first, iOS has no native signer yet); MobSF scan.
 
 ## M8 — Peak events and scale
-- Event zones (polygon, dates, temporary staff, tighter SLA); worker offline sync; k6 load test at 10× daily volume in one hour.
+- Build both APKs in CI (Android SDK), run on a low-end Android phone over 3G, fix what breaks.
+- App CAPTCHA / Play Integrity at registration, forgot-password and device registration; FCM push in the apps.
+- Event zones (polygon, dates, temporary staff, tighter SLA); k6 load test at 10× daily volume in one hour.
 
 ## M9 — Security sign-off and pilot
 - OWASP ZAP full scan against staging, external pentest, CERT-In-empanelled audit, DPDP consent and deletion flows, pilot in one ULB.

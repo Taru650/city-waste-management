@@ -126,3 +126,56 @@ jobs:
         with:
           name: playwright-report
           path: apps/web/playwright-report
+
+  mobile:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    env:
+      E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/cwm_e2e_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.8
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+      - name: Analyze and unit/widget tests (flutter_core, Citizen app, Staff app)
+        run: |
+          set -e
+          for d in packages/flutter_core apps/mobile_citizen apps/mobile_staff; do
+            (cd "$d" && flutter pub get && flutter analyze && flutter test)
+          done
+      - name: S3 emulator (moto) and redis-cli
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends redis-tools
+          python3 -m venv /opt/moto-venv && /opt/moto-venv/bin/pip install --quiet "moto[server]"
+      - name: Contract test (Dart client against the real API)
+        run: |
+          (cd apps/api && npm ci && npm run build)
+          (cd apps/web && npm ci)
+          bash packages/flutter_core/tool/contract_test.sh
+      - name: No gallery / storage access in the shipped manifests
+        run: |
+          for m in apps/mobile_*/android/app/src/main/AndroidManifest.xml; do
+            grep -q 'READ_MEDIA_IMAGES" tools:node="remove"' "$m"
+            grep -q 'android:allowBackup="false"' "$m"
+            grep -q 'android:usesCleartextTraffic="false"' "$m"
+          done
+          ! grep -rE "image_picker|file_picker" apps/mobile_*/pubspec.yaml packages/flutter_core/pubspec.yaml

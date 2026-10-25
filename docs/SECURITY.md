@@ -76,6 +76,21 @@ secret scanning (gitleaks) and container scanning (Trivy).
 | Export safety | formula injection neutralised (CSV/XLSX), no citizen identity, row cap, audited | `report-range.spec`, `test/reports` |
 | Report scope | reports use the same jurisdiction predicate as the inbox; filtering by another ULB's id returns nothing | `test/reports` scope tests |
 
+## Mobile apps (apps/mobile_citizen, apps/mobile_staff, packages/flutter_core)
+| Control | Implementation | Test |
+|---|---|---|
+| Camera-only evidence | custom camera screen; no `image_picker`/`file_picker`; storage and media-read permissions removed from the manifest | CI manifest check, widget tests use the capture launcher only |
+| Capture integrity | P-256 key in Android Keystore (StrongBox if present), non-exportable; manifest signed per capture; GPS accuracy ≤ 50 m and not mocked before the shutter works | `signer_test`, `uploader_test`, `gps_and_strings_test`, contract test (server accepts the Dart signature, refuses unsigned/mocked/stale) |
+| Token storage | `flutter_secure_storage` (Keystore; iOS this-device-only); never logged or shown | `api_client_test` |
+| Session refresh | single-flight refresh; failed refresh clears the session | `api_client_test`, contract test |
+| Transport | release requires HTTPS + SPKI pins (`assertReleaseReady`); network security config: no cleartext, system CAs only | `api_client_test` pin test with a real certificate |
+| Backups / device transfer | `allowBackup=false`, data-extraction rules exclude all domains | CI manifest check |
+| Role separation | Citizen app refuses staff; Staff app refuses citizens and administrators (MFA accounts go to the portal) | widget tests, contract test |
+| Temporary passwords | Staff app forces the change before any other screen; device key registered only afterwards | widget test, contract test |
+| Shared phones | sign-out warns about unsent proof, then deletes the queue and its files | `outbox_test`, staff widget test |
+| Rooted phones (Staff app) | native heuristics (test-keys, su/Magisk paths) block the app | `gps_and_strings_test` (channel), staff widget test; Kotlin not yet compiled, see gaps |
+| Offline queue | stored in the app's private support directory; captures in app-private storage, deleted after upload or discard | `outbox_test` |
+
 ## Input and transport (OWASP A03, A05, API4)
 | Control | Implementation | Test |
 |---|---|---|
@@ -94,10 +109,15 @@ secret scanning (gitleaks) and container scanning (Trivy).
 - **Breached-password check:** still the small embedded deny-list. The HIBP k-anonymity check was listed for M3 and has not been done; it needs outbound access to api.pwnedpasswords.com from the API (M5).
 - **Key rotation:** PII key rotation (re-encrypt job) is not implemented yet (M5).
 - **DAST and pentest:** OWASP ZAP, MobSF, external pentest and CERT-In audit are scheduled in M9.
-- **CAPTCHA:** server-side verifier is implemented; the apps must send the token (M6/M7).
-- **Device attestation:** device keys are accepted without Play Integrity / App Attest verification (`integrity_verdict = UNVERIFIED`). A rooted phone could extract its key and sign arbitrary files. Add Play Integrity verification at device registration before go-live (M7).
+- **CAPTCHA in the apps — production blocker:** production requires `CAPTCHA_SECRET`, and `/auth/register` and `/auth/forgot-password` then refuse requests without a token. Neither mobile app sends one yet, so **citizen registration and password reset will fail in production** until this is done. Recommended: verify a Play Integrity token for app clients (it also closes the device-attestation gap below), keeping hCaptcha for the portal (M8).
+- **Device attestation:** device keys are accepted without Play Integrity / App Attest verification (`integrity_verdict = UNVERIFIED`). A rooted phone could extract its key and sign arbitrary files. Add Play Integrity verification at device registration before go-live (moved to M8; not done in M7).
 - **Portal styles:** `style-src` allows `'unsafe-inline'` (antd injects CSS at runtime; Leaflet sets style attributes). Script injection remains blocked by the nonce CSP.
 - **Portal replicas:** refresh single-flight is per process; run one portal replica or use sticky sessions until a shared lock is added.
 - **Portal exposure:** the portal forwards `X-Forwarded-For` to the API; it must only be reachable through the TLS/WAF proxy, never directly.
 - **Map tiles:** the default OpenStreetMap tile server is for light use only (OSM tile usage policy). Production needs MapmyIndia/Bhuvan or self-hosted tiles via `MAP_TILE_URL`.
 - **Bucket policy:** the bucket must be private with no public-read policy; this is deployment configuration (compose sets it for MinIO) and is not covered by tests.
+- **Mobile builds not yet verified on a device:** no APK has been built (Android SDK host blocked in the build environment). The Kotlin Keystore signer, root checks and Gradle hardening are uncompiled until the M8 CI build.
+- **Root detection is a heuristic:** Magisk DenyList and similar tools hide root from app-side checks. Treat it as friction; Play Integrity on the server is the control.
+- **iOS:** no Secure Enclave signer yet; the iOS build would fail to register a device key. Android-first per the plan.
+- **Push notifications:** the apps poll the in-app inbox; FCM needs the Firebase project files (not committed) and token registration in the apps.
+- **MobSF / dynamic testing of the APKs:** scheduled with M9; needs a built APK first.

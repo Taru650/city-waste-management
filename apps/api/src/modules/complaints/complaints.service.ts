@@ -171,6 +171,7 @@ export class ComplaintsService {
     if (q.from) add('c.created_at >= ?', q.from);
     if (q.to) add('c.created_at < ?', q.to);
     if (q.escalated !== undefined) add('c.escalated = ?', q.escalated);
+    if (q.open) where.push(`c.status IN ('PENDING','ASSIGNED','WORK_IN_PROGRESS','REOPENED')`);
     if (q.overdue) where.push(`c.status IN ('PENDING','ASSIGNED','WORK_IN_PROGRESS','REOPENED') AND c.sla_due_at < now()`);
     const whereSql = where.join(' AND ');
     const [{ total }] = await this.ds.query(`SELECT count(*)::int AS total FROM complaints c WHERE ${whereSql}`, params);
