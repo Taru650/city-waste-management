@@ -1,8 +1,17 @@
+export interface DbLimits {
+  poolMax: number;
+  statementTimeoutMs: number;
+  idleInTransactionTimeoutMs: number;
+  connectionTimeoutMs: number;
+}
+
 export interface AppConfig {
   env: 'development' | 'test' | 'production';
   port: number;
   corsOrigins: string[];
   databaseUrl: string;
+  /** Pool and server-side limits for the API and worker processes (scripts and migrations run without them). */
+  db: DbLimits;
   jwtAccessSecret: string;
   jwtMfaSecret: string;
   piiEncryptionKey: Buffer;
@@ -100,6 +109,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     port: Number(env.PORT ?? 3000),
     corsOrigins: (env.CORS_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
     databaseUrl: required(env, 'DATABASE_URL'),
+    db: {
+      poolMax: Number(env.DB_POOL_MAX ?? 20),
+      // Heaviest report (366 days, statewide, 365k complaints) measured at ~2.5 s; jobs purge in bulk.
+      statementTimeoutMs: Number(env.DB_STATEMENT_TIMEOUT_MS ?? (env.PROCESS_ROLE === 'worker' ? 300_000 : 30_000)),
+      idleInTransactionTimeoutMs: Number(env.DB_IDLE_IN_TRANSACTION_TIMEOUT_MS ?? 60_000),
+      connectionTimeoutMs: Number(env.DB_CONNECTION_TIMEOUT_MS ?? 10_000),
+    },
     jwtAccessSecret: secret(env, 'JWT_ACCESS_SECRET'),
     jwtMfaSecret: secret(env, 'JWT_MFA_SECRET'),
     piiEncryptionKey: key32(env, 'PII_ENCRYPTION_KEY'),
@@ -170,6 +186,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   config.piiHashKeyPrevious = optionalKey32(env, 'PII_HASH_KEY_PREVIOUS', config.piiHashKey);
   if (!['turbo', 'mozjpeg'].includes(config.media.photoEncoder)) throw new Error('PHOTO_ENCODER must be turbo or mozjpeg');
   if (!['api', 'worker', 'all'].includes(config.processRole)) throw new Error('PROCESS_ROLE must be api, worker or all');
+  for (const [name, v] of Object.entries(config.db)) {
+    if (!Number.isInteger(v) || v <= 0) throw new Error(`Database setting ${name} must be a positive whole number`);
+  }
   if (config.mail.transport === 'smtp' && !config.mail.smtpUrl) throw new Error('SMTP_URL is required when MAIL_TRANSPORT=smtp');
   if (config.jwtAccessSecret === config.jwtMfaSecret) {
     throw new Error('JWT_ACCESS_SECRET and JWT_MFA_SECRET must differ');

@@ -19,7 +19,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       // Clients read `message`; `new HttpException('text', status)` would otherwise send a bare string.
       return res.status(exception.getStatus()).json(typeof body === 'string' ? { statusCode: exception.getStatus(), message: body } : body);
     }
-    const err = exception as { type?: string; status?: number };
+    const err = exception as { type?: string; status?: number; code?: string; message?: string };
+    // Database limits (data-source.ts): the client gets a clear, retryable answer, the log the details.
+    if (err?.code === '57014' || err?.code === '25P03' || /timeout exceeded when trying to connect/.test(err?.message ?? '')) {
+      this.logger.warn(`Database limit hit: ${err.code ?? ''} ${err.message ?? ''}`.trim());
+      return res.status(503).json({ statusCode: 503, message: 'The server is busy or the request took too long. Please try again, or narrow the filters.' });
+    }
     // body-parser errors (payload too large, malformed JSON) carry their own status.
     if (err?.type === 'entity.too.large') return res.status(413).json({ statusCode: 413, message: 'Payload too large' });
     if (err?.type === 'entity.parse.failed') return res.status(400).json({ statusCode: 400, message: 'Malformed JSON' });

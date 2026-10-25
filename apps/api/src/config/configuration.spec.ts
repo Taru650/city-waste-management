@@ -26,8 +26,16 @@ describe('loadConfig', () => {
     [{ BREACHED_PASSWORD_CHECK: 'yes' }, /BREACHED_PASSWORD_CHECK must be on or off/],
     [{ PII_ENCRYPTION_KEY_PREVIOUS: key }, /PII_ENCRYPTION_KEY_PREVIOUS must differ/],
     [{ PII_HASH_KEY_PREVIOUS: Buffer.alloc(8).toString('base64') }, /PII_HASH_KEY_PREVIOUS must be 32 bytes/],
+    [{ DB_STATEMENT_TIMEOUT_MS: '30s' }, /statementTimeoutMs must be a positive whole number/],
+    [{ DB_POOL_MAX: '0' }, /poolMax must be a positive whole number/],
   ])('refuses to boot with %p', (override, msg) => {
     expect(() => loadConfig({ ...base, ...override })).toThrow(msg);
+  });
+
+  it('database limits: short statements for the API, longer for background jobs', () => {
+    expect(loadConfig({ ...base, PROCESS_ROLE: 'api' }).db).toEqual({ poolMax: 20, statementTimeoutMs: 30_000, idleInTransactionTimeoutMs: 60_000, connectionTimeoutMs: 10_000 });
+    expect(loadConfig({ ...base, PROCESS_ROLE: 'worker' }).db.statementTimeoutMs).toBe(300_000);
+    expect(loadConfig({ ...base, DB_STATEMENT_TIMEOUT_MS: '45000' }).db.statementTimeoutMs).toBe(45_000);
   });
 
   it('previous PII keys are optional and only set during a rotation', () => {

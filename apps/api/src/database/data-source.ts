@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { DataSource, DataSourceOptions } from 'typeorm';
+import type { DbLimits } from '../config/configuration';
 import { InitialSchema1761300000000 } from './migrations/1761300000000-InitialSchema';
 import { MediaPipeline1761400000000 } from './migrations/1761400000000-MediaPipeline';
 import { SlaNotifications1761500000000 } from './migrations/1761500000000-SlaNotifications';
@@ -15,7 +16,7 @@ export const MIGRATIONS = [InitialSchema1761300000000, MediaPipeline176140000000
  * every scope filter explicit and reviewable); TypeORM is used for pooling,
  * transactions and migrations only.
  */
-export function dataSourceOptions(url: string): DataSourceOptions {
+export function dataSourceOptions(url: string, limits?: DbLimits): DataSourceOptions {
   return {
     type: 'postgres',
     url,
@@ -23,7 +24,17 @@ export function dataSourceOptions(url: string): DataSourceOptions {
     migrationsTableName: 'schema_migrations',
     synchronize: false,
     logging: false,
-    extra: { max: 20 },
+    // With limits (API, worker): a runaway query or a transaction left open cannot hold a connection
+    // for ever, and a request waiting for a free connection fails after a while instead of hanging.
+    // Without (migrations, seed, key rotation): long one-off work is expected.
+    extra: limits
+      ? {
+          max: limits.poolMax,
+          statement_timeout: limits.statementTimeoutMs,
+          idle_in_transaction_session_timeout: limits.idleInTransactionTimeoutMs,
+          connectionTimeoutMillis: limits.connectionTimeoutMs,
+        }
+      : { max: 20 },
   };
 }
 

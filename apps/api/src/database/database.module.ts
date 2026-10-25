@@ -8,7 +8,7 @@ import { dataSourceOptions } from './data-source';
   imports: [
     TypeOrmModule.forRootAsync({
       inject: [APP_CONFIG],
-      useFactory: (config: AppConfig) => dataSourceOptions(config.databaseUrl),
+      useFactory: (config: AppConfig) => dataSourceOptions(config.databaseUrl, config.db),
     }),
   ],
 })
