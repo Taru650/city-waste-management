@@ -20,6 +20,7 @@ import '../models/models.dart';
 import '../offline/outbox.dart';
 import '../security/device_registry.dart';
 import '../security/device_signer.dart';
+import '../security/attestation.dart';
 import '../security/device_integrity.dart';
 
 // Overridable building blocks (tests replace the platform-backed ones).
@@ -34,12 +35,15 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   ref.onDispose(c.dispose);
   return c;
 });
-final authRepoProvider = Provider((ref) => AuthRepository(ref.watch(apiClientProvider)));
+final integritySourceProvider = Provider<IntegrityTokenSource>((ref) => NativeIntegrity(ref.watch(configProvider).cloudProjectNumber));
+final attestorProvider = Provider((ref) => Attestor(ref.watch(apiClientProvider), ref.watch(integritySourceProvider)));
+final authRepoProvider = Provider((ref) => AuthRepository(ref.watch(apiClientProvider), attestor: ref.watch(attestorProvider)));
 final mastersRepoProvider = Provider((ref) => MastersRepository(ref.watch(apiClientProvider)));
 final complaintsRepoProvider = Provider((ref) => ComplaintsRepository(ref.watch(apiClientProvider)));
 final notificationsRepoProvider = Provider((ref) => NotificationsRepository(ref.watch(apiClientProvider)));
 final staffRepoProvider = Provider((ref) => StaffRepository(ref.watch(apiClientProvider)));
-final deviceRegistryProvider = Provider((ref) => DeviceRegistry(ref.watch(apiClientProvider), ref.watch(signerProvider), platform: Platform.isIOS ? 'IOS' : 'ANDROID'));
+final deviceRegistryProvider = Provider((ref) => DeviceRegistry(ref.watch(apiClientProvider), ref.watch(signerProvider),
+    platform: Platform.isIOS ? 'IOS' : 'ANDROID', attestor: ref.watch(attestorProvider)));
 final uploaderProvider = Provider((ref) => MediaUploader(ref.watch(apiClientProvider), ref.watch(signerProvider), ref.watch(deviceRegistryProvider)));
 
 /// App-private directory for captures waiting to upload (not the gallery, not shared storage).

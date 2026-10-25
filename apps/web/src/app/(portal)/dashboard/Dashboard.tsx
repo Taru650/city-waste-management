@@ -32,9 +32,9 @@ function Kpi({ title, value, suffix, testId, tone }: { title: string; value: num
   );
 }
 
-export function Dashboard({ tileUrl }: { tileUrl: string }) {
+export function Dashboard({ tileUrl, initialEventZoneId }: { tileUrl: string; initialEventZoneId?: string }) {
   const me = useMe();
-  const [filters, setFilters] = useState<Filters>({});
+  const [filters, setFilters] = useState<Filters>(initialEventZoneId ? { eventZoneId: initialEventZoneId } : {});
   const defaultDim: Dim = me.role === 'WEB_ADMIN' ? 'district' : me.role === 'DISTRICT_ADMIN' ? 'ulb' : me.role === 'SUB_ADMIN' ? 'ward' : 'worker';
   const [dim, setDim] = useState<Dim>(defaultDim);
   const q = qs(filters as Record<string, unknown>);

@@ -31,7 +31,7 @@ const STAGES: [Media['stage'], string][] = [['COMPLAINT', 'Reported by citizen']
 const ACTION_LABEL: Record<string, string> = {
   CREATE: 'Filed', ROUTE: 'Routed to supervisor', ASSIGN: 'Assigned', START: 'Work started', RESOLVE: 'Resolved', REJECT: 'Rejected',
   MARK_DUPLICATE: 'Marked duplicate', CLOSE: 'Closed by citizen', REOPEN: 'Reopened by citizen', AUTO_CLOSE: 'Auto-closed',
-  SLA_BREACH: 'SLA deadline missed', ESCALATE: 'Escalated',
+  SLA_BREACH: 'SLA deadline missed', ESCALATE: 'Escalated', HANDOVER: 'Event zone ended: handed to area supervisor',
 };
 
 export function ComplaintDetail({ id, tileUrl }: { id: string; tileUrl: string }) {

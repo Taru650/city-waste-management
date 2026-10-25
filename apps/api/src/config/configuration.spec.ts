@@ -34,6 +34,18 @@ describe('loadConfig', () => {
     expect(() => loadConfig(prod)).toThrow(/CLAMAV_HOST/);
     expect(() => loadConfig({ ...prod, CLAMAV_HOST: 'clamav' })).toThrow(/MAIL_TRANSPORT=smtp/);
     expect(() => loadConfig({ ...prod, CLAMAV_HOST: 'clamav', MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtp://mail:25' })).toThrow(/TLS/);
-    expect(() => loadConfig({ ...prod, CLAMAV_HOST: 'clamav', MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtps://u:p@mail:465' })).not.toThrow();
+    const mailed = { ...prod, CLAMAV_HOST: 'clamav', MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtps://u:p@mail:465' };
+    expect(() => loadConfig(mailed)).toThrow(/PLAY_INTEGRITY_MODE=enforce/);
+    const sa = Buffer.from('{"project_id":"p","client_email":"e","private_key":"k"}').toString('base64');
+    const attested = { ...mailed, PLAY_INTEGRITY_MODE: 'enforce', PLAY_INTEGRITY_SERVICE_ACCOUNT_B64: sa };
+    expect(() => loadConfig(attested)).toThrow(/PLAY_INTEGRITY_CERT_SHA256/);
+    expect(() => loadConfig({ ...attested, PLAY_INTEGRITY_CERT_SHA256: 'abc' })).not.toThrow();
+  });
+
+  it('validates Play Integrity settings', () => {
+    expect(() => loadConfig({ ...base, PLAY_INTEGRITY_MODE: 'strict' })).toThrow(/off, monitor or enforce/);
+    expect(() => loadConfig({ ...base, PLAY_INTEGRITY_MODE: 'monitor' })).toThrow(/SERVICE_ACCOUNT/);
+    expect(() => loadConfig({ ...base, PLAY_INTEGRITY_STAFF_LEVEL: 'MAX' })).toThrow(/BASIC, DEVICE or STRONG/);
+    expect(loadConfig(base).playIntegrity).toEqual(expect.objectContaining({ mode: 'off', citizenLevel: 'BASIC', staffLevel: 'DEVICE' }));
   });
 });

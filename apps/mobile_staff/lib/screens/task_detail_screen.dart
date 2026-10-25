@@ -56,6 +56,8 @@ class TaskDetailScreen extends ConsumerWidget {
                 subtitle: Text('${c.ulbName} · ${s.t('ward')} ${c.wardNumber}'),
                 trailing: StatusChip(c.status),
               ),
+              if (c.eventZoneName != null)
+                ListTile(dense: true, leading: const Icon(Icons.festival, color: Colors.deepPurple), title: Text(s.t('eventZone', {'name': c.eventZoneName}), key: const Key('event-zone'))),
               if (c.landmark != null) ListTile(dense: true, leading: const Icon(Icons.place), title: Text(c.landmark!)),
               ListTile(dense: true, leading: const Icon(Icons.notes), title: Text(c.description)),
               ListTile(

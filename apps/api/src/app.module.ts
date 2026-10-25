@@ -9,6 +9,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { AppConfigModule } from './config/config.module';
 import { APP_CONFIG, AppConfig } from './config/configuration';
 import { DatabaseModule } from './database/database.module';
+import { AttestationModule } from './modules/attestation/attestation.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ComplaintsModule } from './modules/complaints/complaints.module';
@@ -21,6 +22,7 @@ import { MastersModule } from './modules/masters/masters.module';
 import { MediaModule } from './modules/media/media.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { UsersModule } from './modules/users/users.module';
+import { ZonesModule } from './modules/zones/zones.module';
 
 @Controller('health')
 class HealthController {
@@ -51,12 +53,14 @@ class HealthController {
       useFactory: (config: AppConfig) => [{ name: 'default', ttl: 60_000, limit: config.rateLimitGlobalPerMin }],
     }),
     AuditModule,
+    AttestationModule,
     JobsModule,
     StorageModule,
     NotificationsModule,
     AuthModule,
     MediaModule,
     UsersModule,
+    ZonesModule,
     MastersModule,
     ComplaintsModule,
     SlaModule,

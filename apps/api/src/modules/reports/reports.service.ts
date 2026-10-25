@@ -60,6 +60,7 @@ export class ReportsService {
     if (q.ulbId) where.push(`c.ulb_id = ${p(q.ulbId)}`);
     if (q.wardId) where.push(`c.ward_id = ${p(q.wardId)}`);
     if (q.typeId) where.push(`c.type_id = ${p(q.typeId)}`);
+    if (q.eventZoneId) where.push(`c.event_zone_id = ${p(q.eventZoneId)}`);
     if (dated) {
       where.push(`c.created_at >= (${p(range.from)}::date)::timestamp AT TIME ZONE ${TZ}`);
       where.push(`c.created_at < (${p(range.to)}::date + 1)::timestamp AT TIME ZONE ${TZ}`);

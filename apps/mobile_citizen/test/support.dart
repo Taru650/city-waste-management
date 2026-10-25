@@ -28,6 +28,7 @@ void citizenRoutes(FakeBackend b) {
       : (401, {'message': 'Invalid credentials'}));
   b.on('GET /auth/me', (_, _) => (200, meJson()));
   b.on('POST /devices', (_, _) => (201, {'id': 'dev-1'}));
+  b.on('POST /attestation/challenge', (_, _) => (200, {'enabled': false})); // Play Integrity off, as in development
   b.on('GET /complaints', (_, _) => (200, {'total': 1, 'items': [complaintJson()]}));
   b.on('GET /notifications', (_, _) => (200, {'total': 0, 'items': []}));
   b.on('GET /masters/districts', (_, _) => (200, [{'id': 'd1', 'lgdCode': 446, 'name': 'Raipur', 'nameHi': 'रायपुर'}]));

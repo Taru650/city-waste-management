@@ -14,6 +14,7 @@ import {
   AssignDto, CreateComplaintDto, DuplicateDto, FeedbackDto, GeoPointDto, ListComplaintsQuery, RejectDto, ResolveDto, StartWorkDto,
 } from './dto/complaints.dto';
 import { Actor, ComplaintAction, InvalidTransitionError, transition, TransitionAction } from './state-machine';
+import { ZonesService } from '../zones/zones.service';
 
 export const MAX_COMPLAINTS_PER_DAY = 10;
 /** A manually chosen ward further than this from the GPS point is flagged for the supervisor. */
@@ -47,6 +48,7 @@ const VIEW_COLUMNS = `
   c.ward_id, w.number AS ward_number, c.area_id,
   c.type_id, t.code AS type_code, t.name_en AS type_name_en, t.name_hi AS type_name_hi,
   c.supervisor_id, sv.name AS supervisor_name, c.worker_id, wk.name AS worker_name,
+  c.event_zone_id, ez.name AS event_zone_name,
   c.duplicate_of, c.reopen_count, c.escalated, c.resolution_remark,
   c.sla_due_at, c.sla_breached_at, c.escalated_at, c.assigned_at, c.resolved_at, c.closed_at, c.created_at, c.updated_at,
   (c.sla_due_at < COALESCE(c.resolved_at, now())) AS sla_breached`;
@@ -58,7 +60,8 @@ const VIEW_JOINS = `
   JOIN wards w ON w.id = c.ward_id
   JOIN complaint_types t ON t.id = c.type_id
   LEFT JOIN users sv ON sv.id = c.supervisor_id
-  LEFT JOIN users wk ON wk.id = c.worker_id`;
+  LEFT JOIN users wk ON wk.id = c.worker_id
+  LEFT JOIN event_zones ez ON ez.id = c.event_zone_id`;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toView(r: any) {
@@ -74,6 +77,7 @@ function toView(r: any) {
     district: { id: r.district_id, name: r.district_name },
     ulb: { id: r.ulb_id, name: r.ulb_name, type: r.ulb_type },
     ward: { id: r.ward_id, number: r.ward_number },
+    eventZone: r.event_zone_id ? { id: r.event_zone_id, name: r.event_zone_name } : null,
     areaId: r.area_id,
     type: { id: r.type_id, code: r.type_code, nameEn: r.type_name_en, nameHi: r.type_name_hi },
     supervisor: r.supervisor_id ? { id: r.supervisor_id, name: r.supervisor_name } : null,
@@ -100,6 +104,7 @@ export class ComplaintsService {
     private readonly ds: DataSource,
     private readonly media: MediaService,
     private readonly notifications: NotificationsService,
+    private readonly zones: ZonesService,
   ) {}
 
   async create(citizen: AuthUser, dto: CreateComplaintDto) {
@@ -126,21 +131,24 @@ export class ComplaintsService {
       if (seq > SEQ_MAX) throw new ConflictException('Complaint sequence exhausted for this ULB and year');
       const complaintNo = buildComplaintNo(ward.district_lgd, ward.ulb_lgd, year, seq);
 
-      const supervisorId: string | null = ward.supervisor_id;
+      // Inside an active event zone: the zone's supervisor and the tighter deadline apply.
+      const zone = await this.zones.zoneFor(m, ward.ulb_id, dto.lat, dto.lng);
+      const supervisorId: string | null = zone?.supervisor_id ?? ward.supervisor_id;
+      const slaHours = zone?.sla_hours ? Math.min(zone.sla_hours, type.sla_hours) : type.sla_hours;
       const [row] = await m.query(
         `INSERT INTO complaints (complaint_no, citizen_id, district_id, ulb_id, ward_id, area_id, ward_source, ward_mismatch,
-                                 type_id, landmark, description, location, gps_accuracy_m, status, sla_due_at)
+                                 type_id, landmark, description, location, gps_accuracy_m, status, sla_due_at, event_zone_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, ST_SetSRID(ST_MakePoint($13, $12), 4326), $14, 'PENDING',
-                 now() + make_interval(hours => $15))
+                 now() + make_interval(hours => $15), $16)
          RETURNING id`,
         [
           complaintNo, citizen.id, ward.district_id, ward.ulb_id, ward.id, ward.area_id, ward.source, ward.mismatch,
-          type.id, dto.landmark || null, dto.description, dto.lat, dto.lng, dto.gpsAccuracyM ?? null, type.sla_hours,
+          type.id, dto.landmark || null, dto.description, dto.lat, dto.lng, dto.gpsAccuracyM ?? null, slaHours, zone?.id ?? null,
         ],
       );
       const proof = await this.media.attach(m, citizen, row.id, MediaStage.COMPLAINT, dto.mediaIds, { requireAny: true });
       await this.event(m, row.id, ComplaintAction.CREATE, null, ComplaintStatus.PENDING, citizen.id, null, {
-        wardSource: ward.source, wardMismatch: ward.mismatch, media: proof,
+        wardSource: ward.source, wardMismatch: ward.mismatch, media: proof, eventZoneId: zone?.id,
       });
       if (supervisorId) {
         // Auto-route to the area supervisor; with no supervisor it waits in the Sub Admin's PENDING queue.
@@ -168,6 +176,7 @@ export class ComplaintsService {
     if (q.ulbId) add('c.ulb_id = ?', q.ulbId);
     if (q.wardId) add('c.ward_id = ?', q.wardId);
     if (q.typeId) add('c.type_id = ?', q.typeId);
+    if (q.eventZoneId) add('c.event_zone_id = ?', q.eventZoneId);
     if (q.from) add('c.created_at >= ?', q.from);
     if (q.to) add('c.created_at < ?', q.to);
     if (q.escalated !== undefined) add('c.escalated = ?', q.escalated);

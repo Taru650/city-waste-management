@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBase64, IsEnum, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+import { AttestationFields } from '../../attestation/attestation.dto';
 
 export enum MediaKind {
   PHOTO = 'PHOTO',
@@ -16,7 +17,7 @@ export const MAX_BYTES: Record<MediaKind, number> = {
   [MediaKind.VIDEO]: 60 * 1024 * 1024,
 };
 
-export class RegisterDeviceDto {
+export class RegisterDeviceDto extends AttestationFields {
   @ApiProperty({ description: 'EC P-256 public key, DER/SPKI, base64. Private key stays in Android Keystore / Secure Enclave.' })
   @IsBase64() @MaxLength(1024)
   publicKey: string;

@@ -68,3 +68,8 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Play Integrity: proves a genuine app on a genuine phone (server: AttestationService).
+    implementation("com.google.android.play:integrity:1.4.0")
+}

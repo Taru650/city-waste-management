@@ -39,6 +39,7 @@ interface UserRow {
   token_version: number;
   failed_login_count: number;
   locked: boolean;
+  access_expired: boolean;
   mfa_enabled: boolean;
   mfa_secret_enc: string | null;
   mfa_last_step: string | null;
@@ -53,6 +54,7 @@ export function normalizeRecoveryCode(code: string): string {
 
 const USER_COLUMNS = `id, role, status, password_hash, token_version, failed_login_count,
   (locked_until IS NOT NULL AND locked_until > now()) AS locked,
+  (access_expires_at IS NOT NULL AND access_expires_at <= now()) AS access_expired,
   mfa_enabled, mfa_secret_enc, mfa_last_step, email_enc, mobile_enc`;
 
 @Injectable()
@@ -111,7 +113,7 @@ export class AuthService {
       await argon2.verify(await this.dummyHash, dto.password).catch(() => false);
       throw this.invalidCredentials();
     }
-    if (user.locked || user.status === UserStatus.DISABLED) {
+    if (user.locked || user.status === UserStatus.DISABLED || user.access_expired) {
       await argon2.verify(await this.dummyHash, dto.password).catch(() => false);
       throw this.invalidCredentials();
     }

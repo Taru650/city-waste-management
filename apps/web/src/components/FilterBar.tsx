@@ -12,6 +12,7 @@ export interface Filters {
   ulbId?: string;
   wardId?: string;
   typeId?: string;
+  eventZoneId?: string;
 }
 
 interface Option {
@@ -35,6 +36,7 @@ export function FilterBar({ me, value, onChange, dates = true, effectiveRange }:
   const { data: ulbs } = useApi<Option[]>(districtId && !me.ulbId ? `/masters/districts/${districtId}/ulbs` : null);
   const { data: wards } = useApi<Option[]>(ulbId ? `/masters/ulbs/${ulbId}/wards` : null);
   const { data: types } = useApi<Option[]>('/masters/complaint-types');
+  const { data: zones } = useApi<Option[]>('/event-zones');
   const set = (patch: Filters) => onChange({ ...value, ...patch });
 
   return (
@@ -73,6 +75,11 @@ export function FilterBar({ me, value, onChange, dates = true, effectiveRange }:
       <Select allowClear placeholder="All complaint types" aria-label="Complaint type filter" style={{ width: 210 }} value={value.typeId}
         options={types?.map((t) => ({ value: t.id, label: t.nameEn }))}
         onChange={(v) => set({ typeId: v })} />
+      {!!zones?.length && (
+        <Select allowClear placeholder="All locations" aria-label="Event zone filter" style={{ width: 200 }} value={value.eventZoneId}
+          options={zones.map((z) => ({ value: z.id, label: `Event: ${z.name}` }))}
+          onChange={(v) => set({ eventZoneId: v })} />
+      )}
     </Space>
   );
 }

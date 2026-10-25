@@ -15,6 +15,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { templates } from '../notifications/templates';
 import { StorageService, UPLOAD_URL_TTL_SECONDS } from '../storage/storage.service';
 import { CaptureManifest, ManifestError, parseDevicePublicKey, verifyManifest } from './capture-manifest';
+import { ATTESTATION_VALID_DAYS, PASSING_VERDICTS } from './devices.service';
 import { ALLOWED_TYPES, ConfirmUploadDto, CreateUploadDto, MAX_BYTES, MediaKind } from './dto/media.dto';
 import { detectType } from './file-signature';
 import { MalwareScanner } from './malware-scanner';
@@ -88,8 +89,17 @@ export class MediaService implements OnModuleInit {
   async createUpload(user: AuthUser, dto: CreateUploadDto) {
     if (!ALLOWED_TYPES[dto.kind].includes(dto.contentType)) throw new BadRequestException(`${dto.contentType} is not allowed for ${dto.kind}`);
     if (dto.bytes > MAX_BYTES[dto.kind]) throw new BadRequestException(`${dto.kind} must be at most ${MAX_BYTES[dto.kind]} bytes`);
-    const [device] = await this.ds.query(`SELECT id FROM devices WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL`, [dto.deviceId, user.id]);
+    const [device] = await this.ds.query(
+      `SELECT id, integrity_verdict = ANY($3) AND integrity_checked_at > now() - make_interval(days => $4) AS attested
+         FROM devices WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+      [dto.deviceId, user.id, PASSING_VERDICTS, ATTESTATION_VALID_DAYS],
+    );
     if (!device) throw new BadRequestException('Unknown or revoked device; register the device again');
+    // Keys registered before enforcement (or whose verdict aged out) must attest again. The apps
+    // re-register on this message, which leads them through the 428 attestation flow.
+    if (this.config.playIntegrity.mode === 'enforce' && !device.attested) {
+      throw new BadRequestException('Device not verified recently; register the device again');
+    }
 
     const [counts] = await this.ds.query(
       `SELECT count(*) FILTER (WHERE status = 'PENDING_UPLOAD' AND created_at > now() - make_interval(mins => $2))::int AS pending,

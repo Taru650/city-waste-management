@@ -1,13 +1,13 @@
 'use client';
 
-import { App, Alert, Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, DatePicker, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 import { useState } from 'react';
 import { api, qs, useApi } from '@/lib/client/api';
 import { ROLE_LABELS } from '@/lib/client/format';
 import { useMe } from '@/lib/client/session';
 
-interface Staff { id: string; role: string; status: string; name: string; mobile: string; districtId: string | null; ulbId: string | null; mfaEnabled: boolean; lastLoginAt: string | null }
+interface Staff { id: string; role: string; status: string; name: string; mobile: string; districtId: string | null; ulbId: string | null; mfaEnabled: boolean; lastLoginAt: string | null; accessExpiresAt: string | null }
 
 const CREATABLE: Record<string, string[]> = { WEB_ADMIN: ['DISTRICT_ADMIN'], DISTRICT_ADMIN: ['SUB_ADMIN'], SUB_ADMIN: ['SUPERVISOR', 'WORKER'] };
 const MFA_ROLES = ['WEB_ADMIN', 'DISTRICT_ADMIN', 'SUB_ADMIN'];
@@ -36,9 +36,10 @@ export default function StaffPage() {
       ),
     });
 
-  const create = async (v: Record<string, string>) => {
+  const create = async (v: Record<string, unknown>) => {
     try {
-      const r = await api<{ tempPassword: string }>('/users', { method: 'POST', body: Object.fromEntries(Object.entries(v).filter(([, x]) => x)) });
+      const body = { ...v, accessExpiresAt: v.accessExpiresAt ? (v.accessExpiresAt as dayjs.Dayjs).toISOString() : undefined };
+      const r = await api<{ tempPassword: string }>('/users', { method: 'POST', body: Object.fromEntries(Object.entries(body).filter(([, x]) => x)) });
       setCreating(false);
       form.resetFields();
       await mutate();
@@ -73,7 +74,14 @@ export default function StaffPage() {
             { title: 'Role', dataIndex: 'role', render: (v) => ROLE_LABELS[v] },
             ...(me.role === 'DISTRICT_ADMIN' ? [{ title: 'ULB', dataIndex: 'ulbId', render: (v: string | null) => ulbName(v) ?? '—' }] : []),
             { title: 'Mobile', dataIndex: 'mobile' },
-            { title: 'Status', dataIndex: 'status', render: (v) => <Tag color={v === 'ACTIVE' ? 'green' : 'red'}>{v}</Tag> },
+            {
+              title: 'Status', dataIndex: 'status', render: (v, s) => {
+                if (v !== 'ACTIVE') return <Tag color="red">{v}</Tag>;
+                if (s.accessExpiresAt && dayjs(s.accessExpiresAt).isBefore(dayjs())) return <Tag color="default">Access ended</Tag>;
+                if (s.accessExpiresAt) return <Tag color="gold">Temporary until {dayjs(s.accessExpiresAt).format('DD MMM, HH:mm')}</Tag>;
+                return <Tag color="green">ACTIVE</Tag>;
+              },
+            },
             { title: '2-step', dataIndex: 'mfaEnabled', render: (v, s) => (MFA_ROLES.includes(s.role) ? (v ? <Tag color="green">On</Tag> : <Tag color="orange">Not set up</Tag>) : '—') },
             { title: 'Last sign-in', dataIndex: 'lastLoginAt', render: (v) => (v ? dayjs(v).format('DD MMM, HH:mm') : 'Never') },
             {
@@ -116,6 +124,12 @@ export default function StaffPage() {
           )}
           {newRole === 'SUB_ADMIN' && (
             <Form.Item name="ulbId" label="ULB" rules={[{ required: true }]}><Select options={ulbs?.map((u) => ({ value: u.id, label: u.name }))} /></Form.Item>
+          )}
+          {(newRole === 'SUPERVISOR' || newRole === 'WORKER') && (
+            <Form.Item name="accessExpiresAt" label="Temporary staff: access ends (optional)" extra="For event staff. Sign-in stops at this time, including on phones already signed in.">
+              <DatePicker showTime={{ format: 'HH:mm' }} format="DD MMM YYYY, HH:mm" style={{ width: '100%' }} aria-label="Access ends"
+                disabledDate={(d) => d.isBefore(dayjs(), 'day') || d.isAfter(dayjs().add(1, 'year'))} />
+            </Form.Item>
           )}
         </Form>
       </Modal>

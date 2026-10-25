@@ -40,11 +40,13 @@ export class JwtAuthGuard implements CanActivate {
     if (claims.typ !== 'access' || typeof claims.sub !== 'string') throw new UnauthorizedException();
 
     const [row] = await this.ds.query(
-      `SELECT id, role, status, token_version, must_change_password, district_id, ulb_id, area_id
+      `SELECT id, role, status, token_version, must_change_password, district_id, ulb_id, area_id,
+              (access_expires_at IS NOT NULL AND access_expires_at <= now()) AS access_expired
          FROM users WHERE id = $1`,
       [claims.sub],
     );
-    if (!row || row.status === 'DISABLED' || row.token_version !== claims.tv) throw new UnauthorizedException();
+    // Temporary (event) staff lose access the moment it expires, including sessions already open.
+    if (!row || row.status === 'DISABLED' || row.access_expired || row.token_version !== claims.tv) throw new UnauthorizedException();
 
     const user: AuthUser = {
       id: row.id,

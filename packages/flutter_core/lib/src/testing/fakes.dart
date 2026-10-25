@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../offline/outbox.dart';
+import '../security/attestation.dart';
 
 typedef Route = FutureOr<(int, Object?)> Function(RequestOptions req, Object? body);
 
@@ -50,4 +51,27 @@ class MemoryOutboxStorage implements OutboxStorage {
   Future<List<OutboxItem>> load() async => saved.map(OutboxItem.fromJson).toList();
   @override
   Future<void> save(List<OutboxItem> items) async => saved = items.map((i) => jsonDecode(jsonEncode(i.toJson())) as Map<String, dynamic>).toList();
+}
+
+/// Play Integrity stand-in matching the API's test double (apps/api/test/fake-play-integrity.ts):
+/// a token is `fake.<base64url(verdict JSON)>` carrying the nonce it was requested for.
+class FakeIntegritySource implements IntegrityTokenSource {
+  FakeIntegritySource(this.packageName, {this.cert = 'cwm-release-cert-sha256', this.device = const ['MEETS_DEVICE_INTEGRITY', 'MEETS_BASIC_INTEGRITY'], this.failWith});
+  final String packageName;
+  final String cert;
+  final List<String> device;
+  final String? failWith;
+  final List<String> nonces = [];
+
+  @override
+  Future<String> token(String nonce) async {
+    if (failWith != null) throw IntegrityUnavailable(failWith!);
+    nonces.add(nonce);
+    final payload = {
+      'requestDetails': {'requestPackageName': packageName, 'nonce': nonce, 'timestampMillis': '${DateTime.now().millisecondsSinceEpoch}'},
+      'appIntegrity': {'appRecognitionVerdict': 'PLAY_RECOGNIZED', 'packageName': packageName, 'certificateSha256Digest': [cert]},
+      'deviceIntegrity': {'deviceRecognitionVerdict': device},
+    };
+    return 'fake.${base64Url.encode(utf8.encode(jsonEncode(payload))).replaceAll('=', '')}';
+  }
 }

@@ -107,7 +107,7 @@ class Complaint {
     required this.id, required this.complaintNo, required this.status, required this.description, this.landmark,
     required this.lat, required this.lng, required this.ulbName, required this.wardNumber, required this.typeNameEn, required this.typeNameHi,
     this.supervisorName, this.workerName, this.workerId, required this.slaDueAt, required this.slaBreached, required this.createdAt,
-    this.resolvedAt, this.resolutionRemark, this.reopenCount = 0, this.events = const [], this.feedbackCount = 0,
+    this.resolvedAt, this.resolutionRemark, this.reopenCount = 0, this.events = const [], this.feedbackCount = 0, this.eventZoneName,
   });
 
   final String id;
@@ -133,6 +133,9 @@ class Complaint {
   final List<ComplaintEvent> events;
   final int feedbackCount;
 
+  /// Set when the complaint was filed inside an event zone (mela, festival): its own supervisor and deadline.
+  final String? eventZoneName;
+
   String typeName(String lang) => lang == 'hi' ? typeNameHi : typeNameEn;
 
   /// The citizen may rate a resolution within 7 days, once per resolution.
@@ -150,6 +153,7 @@ class Complaint {
       resolvedAt: _date(j['resolvedAt']), resolutionRemark: j['resolutionRemark'], reopenCount: (j['reopenCount'] as int?) ?? 0,
       events: ((j['events'] as List?) ?? []).map((e) => ComplaintEvent.fromJson(e as Map<String, dynamic>)).toList(),
       feedbackCount: ((j['feedback'] as List?) ?? []).length,
+      eventZoneName: (j['eventZone'] as Map?)?['name'] as String?,
     );
   }
 }

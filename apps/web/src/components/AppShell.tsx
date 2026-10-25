@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  AlertOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined, LogoutOutlined, TeamOutlined, UserOutlined,
+  AlertOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined, EnvironmentOutlined, LogoutOutlined, TeamOutlined, UserOutlined,
 } from '@ant-design/icons';
 import { Badge, Button, Dropdown, Layout, Menu, Space, Typography } from 'antd';
 import Link from 'next/link';
@@ -20,6 +20,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
   const items = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: <Link href="/dashboard">Dashboard</Link> },
     { key: '/complaints', icon: <AlertOutlined />, label: <Link href="/complaints">Complaints</Link> },
+    { key: '/event-zones', icon: <EnvironmentOutlined />, label: <Link href="/event-zones">Event zones</Link> },
     ...(isAdmin(me)
       ? [
           { key: '/masters', icon: <DatabaseOutlined />, label: <Link href="/masters">Masters</Link> },

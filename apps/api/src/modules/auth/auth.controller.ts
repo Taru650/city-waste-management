@@ -29,7 +29,7 @@ export class AuthController {
   @Public() @AuthThrottle()
   @Post('register')
   async register(@Body() dto: RegisterCitizenDto, @Client() client: ClientInfo) {
-    await this.captcha.assertHuman(dto.captchaToken, client.ip ?? '');
+    await this.captcha.assertHumanOrApp(dto, 'register', client.ip ?? '');
     return this.auth.registerCitizen(dto, client);
   }
 
@@ -102,7 +102,7 @@ export class AuthController {
   @Public() @AuthThrottle()
   @Post('forgot-password') @HttpCode(202)
   async forgotPassword(@Body() dto: ForgotPasswordDto, @Client() client: ClientInfo) {
-    await this.captcha.assertHuman(dto.captchaToken, client.ip ?? '');
+    await this.captcha.assertHumanOrApp(dto, 'forgot-password', client.ip ?? '');
     await this.auth.forgotPassword(dto.identifier, client);
     return { message: 'If an account with an email exists, a reset link has been sent.' };
   }

@@ -4,6 +4,9 @@ import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.google.android.play.core.integrity.IntegrityManagerFactory
+import com.google.android.play.core.integrity.IntegrityServiceException
+import com.google.android.play.core.integrity.IntegrityTokenRequest
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -25,6 +28,20 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "org.citywaste/device_integrity").setMethodCallHandler { call, result ->
             if (call.method == "check") result.success(integrity()) else result.notImplemented()
+        }
+        // Play Integrity (classic request): the nonce comes from the server challenge, see
+        // flutter_core Attestor. Errors are returned as codes the server can record.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "org.citywaste/play_integrity").setMethodCallHandler { call, result ->
+            if (call.method != "token") return@setMethodCallHandler result.notImplemented()
+            val nonce = call.argument<String>("nonce") ?: return@setMethodCallHandler result.error("ARG", "nonce missing", null)
+            val project = call.argument<Number>("cloudProjectNumber")?.toLong() ?: 0L
+            IntegrityManagerFactory.create(applicationContext)
+                .requestIntegrityToken(IntegrityTokenRequest.builder().setNonce(nonce).setCloudProjectNumber(project).build())
+                .addOnSuccessListener { result.success(it.token()) }
+                .addOnFailureListener { e ->
+                    val code = (e as? IntegrityServiceException)?.errorCode?.let { "PLAY_INTEGRITY_$it" } ?: e.javaClass.simpleName
+                    result.error("INTEGRITY", code, null)
+                }
         }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "org.citywaste/device_key").setMethodCallHandler { call, result ->
             try {

@@ -3,8 +3,10 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { InitialSchema1761300000000 } from './migrations/1761300000000-InitialSchema';
 import { MediaPipeline1761400000000 } from './migrations/1761400000000-MediaPipeline';
 import { SlaNotifications1761500000000 } from './migrations/1761500000000-SlaNotifications';
+import { Attestation1761600000000 } from './migrations/1761600000000-Attestation';
+import { EventZones1761700000000 } from './migrations/1761700000000-EventZones';
 
-export const MIGRATIONS = [InitialSchema1761300000000, MediaPipeline1761400000000, SlaNotifications1761500000000];
+export const MIGRATIONS = [InitialSchema1761300000000, MediaPipeline1761400000000, SlaNotifications1761500000000, Attestation1761600000000, EventZones1761700000000];
 
 /**
  * Queries are written in SQL through the DataSource (PostGIS-heavy, and keeps

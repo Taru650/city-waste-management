@@ -1,4 +1,5 @@
 import '../models/models.dart';
+import '../security/attestation.dart';
 import 'api_client.dart';
 import 'api_exception.dart';
 import 'token_store.dart';
@@ -7,8 +8,13 @@ enum LoginOutcome { ok, mfaRequired }
 
 /// Account endpoints. Tokens are written to the secure store and never returned to the UI.
 class AuthRepository {
-  AuthRepository(this.api);
+  AuthRepository(this.api, {this.attestor});
   final ApiClient api;
+
+  /// Play Integrity proof for the public account endpoints (the apps have no CAPTCHA).
+  final Attestor? attestor;
+
+  Future<Map<String, String>> _proof(String purpose) async => attestor == null ? const {} : attestor!.prove(purpose);
 
   Future<LoginOutcome> login(String identifier, String password) async {
     final r = await api.postPublic<Map<String, dynamic>>('/auth/login', {'identifier': identifier, 'password': password});
@@ -20,14 +26,17 @@ class AuthRepository {
   Future<void> registerCitizen({
     required String homeWardId, required String name, String? guardianName, required String mobile, required String email, required String password,
   }) async {
+    final proof = await _proof('register');
     final r = await api.postPublic<Map<String, dynamic>>('/auth/register', {
+      ...proof,
       'homeWardId': homeWardId, 'name': name, if (guardianName != null && guardianName.isNotEmpty) 'guardianName': guardianName,
       'mobile': mobile, 'email': email, 'password': password,
     });
     await api.store.write(Tokens(r['accessToken'] as String, r['refreshToken'] as String));
   }
 
-  Future<void> forgotPassword(String identifier) => api.postPublic('/auth/forgot-password', {'identifier': identifier});
+  Future<void> forgotPassword(String identifier) async =>
+      api.postPublic('/auth/forgot-password', {...await _proof('forgot-password'), 'identifier': identifier});
 
   Future<Me> me() async => Me.fromJson(await api.get<Map<String, dynamic>>('/auth/me'));
 

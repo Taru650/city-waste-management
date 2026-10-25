@@ -38,7 +38,22 @@ export interface AppConfig {
   processRole: 'api' | 'worker' | 'all';
   mail: { transport: 'log' | 'smtp'; smtpUrl?: string; from: string };
   fcm: { serviceAccountJson?: string; apiBase: string };
+  playIntegrity: {
+    /** off: no checks (dev/test). monitor: verdicts recorded, never blocking. enforce: required (production). */
+    mode: 'off' | 'monitor' | 'enforce';
+    serviceAccountJson?: string;
+    apiBase: string;
+    citizenPackage: string;
+    staffPackage: string;
+    /** SHA-256 digests (base64url, as Google reports them) of the release signing certificates. Empty = not checked. */
+    certSha256: string[];
+    /** Minimum device verdict. Citizens: BASIC keeps cheap uncertified phones usable; staff evidence needs DEVICE. */
+    citizenLevel: IntegrityLevel;
+    staffLevel: IntegrityLevel;
+  };
 }
+
+export type IntegrityLevel = 'BASIC' | 'DEVICE' | 'STRONG';
 
 function required(env: NodeJS.ProcessEnv, key: string): string {
   const value = env[key];
@@ -106,12 +121,30 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       serviceAccountJson: env.FCM_SERVICE_ACCOUNT_B64 ? Buffer.from(env.FCM_SERVICE_ACCOUNT_B64, 'base64').toString('utf8') : undefined,
       apiBase: env.FCM_API_BASE ?? 'https://fcm.googleapis.com',
     },
+    playIntegrity: {
+      mode: (env.PLAY_INTEGRITY_MODE ?? 'off') as AppConfig['playIntegrity']['mode'],
+      serviceAccountJson: env.PLAY_INTEGRITY_SERVICE_ACCOUNT_B64
+        ? Buffer.from(env.PLAY_INTEGRITY_SERVICE_ACCOUNT_B64, 'base64').toString('utf8')
+        : undefined,
+      apiBase: env.PLAY_INTEGRITY_API_BASE ?? 'https://playintegrity.googleapis.com',
+      citizenPackage: env.PLAY_INTEGRITY_CITIZEN_PACKAGE ?? 'org.citywaste.cwm_citizen',
+      staffPackage: env.PLAY_INTEGRITY_STAFF_PACKAGE ?? 'org.citywaste.cwm_staff',
+      certSha256: (env.PLAY_INTEGRITY_CERT_SHA256 ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+      citizenLevel: (env.PLAY_INTEGRITY_CITIZEN_LEVEL ?? 'BASIC') as IntegrityLevel,
+      staffLevel: (env.PLAY_INTEGRITY_STAFF_LEVEL ?? 'DEVICE') as IntegrityLevel,
+    },
   };
   if (!['api', 'worker', 'all'].includes(config.processRole)) throw new Error('PROCESS_ROLE must be api, worker or all');
   if (config.mail.transport === 'smtp' && !config.mail.smtpUrl) throw new Error('SMTP_URL is required when MAIL_TRANSPORT=smtp');
   if (config.jwtAccessSecret === config.jwtMfaSecret) {
     throw new Error('JWT_ACCESS_SECRET and JWT_MFA_SECRET must differ');
   }
+  const pi = config.playIntegrity;
+  if (!['off', 'monitor', 'enforce'].includes(pi.mode)) throw new Error('PLAY_INTEGRITY_MODE must be off, monitor or enforce');
+  for (const level of [pi.citizenLevel, pi.staffLevel]) {
+    if (!['BASIC', 'DEVICE', 'STRONG'].includes(level)) throw new Error('PLAY_INTEGRITY_*_LEVEL must be BASIC, DEVICE or STRONG');
+  }
+  if (pi.mode !== 'off' && !pi.serviceAccountJson) throw new Error('PLAY_INTEGRITY_SERVICE_ACCOUNT_B64 is required unless PLAY_INTEGRITY_MODE=off');
   if (nodeEnv === 'production') {
     if (!config.captchaSecret) throw new Error('CAPTCHA_SECRET is required in production');
     if (config.corsOrigins.length === 0) throw new Error('CORS_ORIGINS is required in production');
@@ -120,6 +153,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (config.mail.smtpUrl && !/^smtps:\/\/|[?&]requireTLS=true/.test(config.mail.smtpUrl)) {
       throw new Error('SMTP_URL must use TLS in production (smtps:// or ?requireTLS=true)');
     }
+    // The apps have no CAPTCHA: Play Integrity is their bot and tamper check.
+    if (pi.mode !== 'enforce') throw new Error('PLAY_INTEGRITY_MODE=enforce is required in production');
+    if (pi.certSha256.length === 0) throw new Error('PLAY_INTEGRITY_CERT_SHA256 is required in production');
   }
   return config;
 }

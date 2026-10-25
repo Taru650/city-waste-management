@@ -120,7 +120,8 @@ class S {
     'st.REJECTED': 'Rejected', 'st.DUPLICATE': 'Duplicate', 'st.REOPENED': 'Reopened', 'st.CLOSED': 'Closed',
     'ev.CREATE': 'Filed', 'ev.ROUTE': 'Sent to supervisor', 'ev.ASSIGN': 'Assigned', 'ev.START': 'Work started', 'ev.RESOLVE': 'Resolved',
     'ev.REJECT': 'Rejected', 'ev.MARK_DUPLICATE': 'Merged with earlier complaint', 'ev.CLOSE': 'Closed', 'ev.REOPEN': 'Reopened',
-    'ev.AUTO_CLOSE': 'Closed', 'ev.SLA_BREACH': 'Deadline passed', 'ev.ESCALATE': 'Escalated',
+    'ev.AUTO_CLOSE': 'Closed', 'ev.SLA_BREACH': 'Deadline passed', 'ev.ESCALATE': 'Escalated', 'ev.HANDOVER': 'Event ended: handed to area supervisor',
+    'eventZone': 'Event: {name}',
   };
 
   static const _hi = <String, String>{
@@ -230,7 +231,8 @@ class S {
     'st.REJECTED': 'अस्वीकृत', 'st.DUPLICATE': 'दोहराई गई', 'st.REOPENED': 'फिर से खुली', 'st.CLOSED': 'बंद',
     'ev.CREATE': 'दर्ज हुई', 'ev.ROUTE': 'सुपरवाइज़र को भेजी गई', 'ev.ASSIGN': 'सौंपी गई', 'ev.START': 'काम शुरू', 'ev.RESOLVE': 'समाधान हुआ',
     'ev.REJECT': 'अस्वीकृत', 'ev.MARK_DUPLICATE': 'पिछली शिकायत से जोड़ी गई', 'ev.CLOSE': 'बंद', 'ev.REOPEN': 'फिर से खुली',
-    'ev.AUTO_CLOSE': 'बंद', 'ev.SLA_BREACH': 'समय सीमा पार', 'ev.ESCALATE': 'उच्च अधिकारी को भेजी गई',
+    'ev.AUTO_CLOSE': 'बंद', 'ev.SLA_BREACH': 'समय सीमा पार', 'ev.ESCALATE': 'उच्च अधिकारी को भेजी गई', 'ev.HANDOVER': 'इवेंट समाप्त: क्षेत्र पर्यवेक्षक को सौंपी गई',
+    'eventZone': 'इवेंट: {name}',
   };
 
   /// Keys present in English but missing in Hindi (used by a test to keep both complete).

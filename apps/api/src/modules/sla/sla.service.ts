@@ -7,6 +7,8 @@ import { JobsService, QUEUES } from '../jobs/jobs.service';
 import { MediaService } from '../media/media.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { templates } from '../notifications/templates';
+import { AttestationService } from '../attestation/attestation.service';
+import { ZonesService } from '../zones/zones.service';
 
 const OPEN = `('PENDING','ASSIGNED','WORK_IN_PROGRESS','REOPENED')`;
 const BATCH = 500;
@@ -35,6 +37,8 @@ export class SlaService implements OnModuleInit {
     private readonly notifications: NotificationsService,
     private readonly complaints: ComplaintsService,
     private readonly media: MediaService,
+    private readonly attestation: AttestationService,
+    private readonly zones: ZonesService,
   ) {}
 
   onModuleInit() {
@@ -44,6 +48,10 @@ export class SlaService implements OnModuleInit {
     this.jobs.every(QUEUES.MAINTENANCE, 'sla-sweep', 60_000);
     this.jobs.every(QUEUES.MAINTENANCE, 'auto-close', 3_600_000);
     this.jobs.every(QUEUES.MAINTENANCE, 'purge-media', 3_600_000);
+    this.jobs.process(QUEUES.MAINTENANCE, 'purge-attestation', () => this.attestation.purgeExpired());
+    this.jobs.every(QUEUES.MAINTENANCE, 'purge-attestation', 3_600_000);
+    this.jobs.process(QUEUES.MAINTENANCE, 'zone-handover', () => this.zones.handover());
+    this.jobs.every(QUEUES.MAINTENANCE, 'zone-handover', 300_000);
   }
 
   async sweep(): Promise<{ breached: number; escalated: number }> {

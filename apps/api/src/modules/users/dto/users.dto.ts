@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
+import { IsEmail, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
 import { Role, STAFF_ROLES, UserStatus } from '../../../common/enums';
 import { MOBILE_REGEX, NAME_REGEX } from '../../../common/validation';
 
@@ -27,6 +27,10 @@ export class CreateStaffDto {
 
   @ApiPropertyOptional({ description: 'Optional home area for a worker' }) @IsOptional() @IsUUID()
   areaId?: string;
+
+  @ApiPropertyOptional({ description: 'Temporary staff (events): sign-in stops at this moment. Supervisors and workers only.' })
+  @IsOptional() @IsISO8601({ strict: true })
+  accessExpiresAt?: string;
 }
 
 export class UpdateStatusDto {

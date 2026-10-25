@@ -58,7 +58,8 @@ export class SessionService {
     const result = await this.ds.transaction(async (m): Promise<SessionTokens | 'REJECT'> => {
       const [row] = await m.query(
         `SELECT rt.id, rt.family_id, rt.used_at, rt.revoked_at, rt.expires_at < now() AS expired,
-                u.id AS user_id, u.role, u.status, u.token_version
+                u.id AS user_id, u.role, u.status, u.token_version,
+                (u.access_expires_at IS NOT NULL AND u.access_expires_at <= now()) AS access_expired
            FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id
           WHERE rt.token_hash = $1
           FOR UPDATE OF rt`,
@@ -71,7 +72,7 @@ export class SessionService {
         await m.query(`UPDATE refresh_tokens SET revoked_at = now() WHERE family_id = $1 AND revoked_at IS NULL`, [row.family_id]);
         return 'REJECT';
       }
-      if (row.expired || row.status === 'DISABLED') return 'REJECT';
+      if (row.expired || row.status === 'DISABLED' || row.access_expired) return 'REJECT';
       await m.query(`UPDATE refresh_tokens SET used_at = now() WHERE id = $1`, [row.id]);
       return this.issue({ id: row.user_id, role: row.role, token_version: row.token_version }, client, row.family_id, m);
     });

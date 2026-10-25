@@ -118,6 +118,9 @@ export class ListComplaintsQuery {
   @ApiPropertyOptional() @IsOptional() @IsUUID()
   typeId?: string;
 
+  @ApiPropertyOptional() @IsOptional() @IsUUID()
+  eventZoneId?: string;
+
   @ApiPropertyOptional() @IsOptional() @IsISO8601()
   from?: string;
 

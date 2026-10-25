@@ -11,7 +11,7 @@ describe('BFF proxy rules', () => {
 
   it.each([
     'auth/login', 'auth/refresh', 'auth/logout', 'auth/change-password', 'auth/mfa/verify', 'auth/mfa/recover',
-    'media/upload-url', 'devices', 'devices/abc',
+    'media/upload-url', 'devices', 'devices/abc', 'attestation/challenge', 'Attestation/Challenge/',
     // bypass attempts: Express is case-insensitive and tolerant of slashes
     'AUTH/login', 'Auth/Refresh', 'auth/login/', 'auth//login', 'auth/./login', 'auth%2Flogin', 'MEDIA/x',
     // traversal

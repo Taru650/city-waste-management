@@ -23,6 +23,9 @@ export class ReportFilterQuery {
 
   @ApiPropertyOptional() @IsOptional() @IsUUID()
   typeId?: string;
+
+  @ApiPropertyOptional({ description: 'Event zone dashboard' }) @IsOptional() @IsUUID()
+  eventZoneId?: string;
 }
 
 export const BREAKDOWN_BY = ['district', 'ulb', 'ward', 'type', 'supervisor', 'worker'] as const;

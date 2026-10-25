@@ -3,10 +3,11 @@ import { Transform } from 'class-transformer';
 import { IsEmail, IsIn, IsOptional, IsString, IsUUID, Length, Matches, MaxLength } from 'class-validator';
 import { MOBILE_REGEX, NAME_REGEX } from '../../../common/validation';
 import { PASSWORD_MAX } from '../password-policy';
+import { AttestationFields } from '../../attestation/attestation.dto';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
-export class RegisterCitizenDto {
+export class RegisterCitizenDto extends AttestationFields {
   @ApiProperty({ description: 'Home ward (District and ULB are derived from it). Profile only, not used to route complaints.' })
   @IsUUID()
   homeWardId: string;
@@ -65,7 +66,7 @@ export class ChangePasswordDto {
   newPassword: string;
 }
 
-export class ForgotPasswordDto {
+export class ForgotPasswordDto extends AttestationFields {
   @ApiProperty({ description: 'Mobile number or email' }) @Transform(trim) @IsString() @Length(3, 120)
   identifier: string;
 

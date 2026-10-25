@@ -176,6 +176,14 @@ void main() {
     expect(find.text('Rejected'), findsWidgets);
   });
 
+  testWidgets('a complaint from an event zone says so on the task screen', (t) async {
+    final env = TestEnv(StaffBackend(role: 'SUPERVISOR', zone: 'Rajim Mela'), signedIn: true);
+    await t.pumpWidget(env.app(const StaffApp()));
+    await t.pumpAndSettle();
+    await openTask(t);
+    expect(find.text('Event: Rajim Mela'), findsOneWidget);
+  });
+
   test('action matrix mirrors the API state machine', () {
     final w = StaffActions(Role.worker, ComplaintStatus.assigned);
     expect([w.start, w.resolve, w.assign, w.reject], [true, false, false, false]);

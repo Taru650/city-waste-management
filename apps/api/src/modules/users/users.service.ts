@@ -66,18 +66,26 @@ export class UsersService {
       }
     }
 
+    let accessExpiresAt: Date | null = null;
+    if (dto.accessExpiresAt) {
+      if (dto.role !== Role.SUPERVISOR && dto.role !== Role.WORKER) throw new BadRequestException('Only supervisors and workers can be temporary');
+      accessExpiresAt = new Date(dto.accessExpiresAt);
+      if (accessExpiresAt <= new Date()) throw new BadRequestException('accessExpiresAt must be in the future');
+      if (accessExpiresAt.getTime() - Date.now() > 366 * 86_400_000) throw new BadRequestException('Temporary access can last at most one year');
+    }
+
     const tempPassword = generateTempPassword();
     const passwordHash = await argon2.hash(tempPassword, ARGON2_OPTIONS);
     const [row] = await this.ds
       .query(
         `INSERT INTO users (role, status, name, mobile_enc, mobile_hash, email_enc, email_hash, password_hash,
-                            must_change_password, district_id, ulb_id, area_id, created_by)
-         VALUES ($1, 'ACTIVE', $2, $3, $4, $5, $6, $7, true, $8, $9, $10, $11)
+                            must_change_password, district_id, ulb_id, area_id, created_by, access_expires_at)
+         VALUES ($1, 'ACTIVE', $2, $3, $4, $5, $6, $7, true, $8, $9, $10, $11, $12)
          RETURNING id`,
         [
           dto.role, dto.name, this.pii.encrypt(dto.mobile), this.pii.blindIndex(dto.mobile),
           dto.email ? this.pii.encrypt(dto.email) : null, dto.email ? this.pii.blindIndex(dto.email) : null,
-          passwordHash, districtId, ulbId, areaId, actor.id,
+          passwordHash, districtId, ulbId, areaId, actor.id, accessExpiresAt,
         ],
       )
       .catch((err) => {
@@ -104,14 +112,14 @@ export class UsersService {
       where.push(`role = $${params.length}`);
     }
     const rows = await this.ds.query(
-      `SELECT id, role, status, name, mobile_enc, district_id, ulb_id, area_id, mfa_enabled, last_login_at, created_at
+      `SELECT id, role, status, name, mobile_enc, district_id, ulb_id, area_id, mfa_enabled, last_login_at, created_at, access_expires_at
          FROM users WHERE ${where.join(' AND ')} ORDER BY role, name LIMIT 1000`,
       params,
     );
     return rows.map((r: Record<string, string>) => ({
       id: r.id, role: r.role, status: r.status, name: r.name, mobile: this.pii.decrypt(r.mobile_enc),
       districtId: r.district_id, ulbId: r.ulb_id, areaId: r.area_id, mfaEnabled: r.mfa_enabled,
-      lastLoginAt: r.last_login_at, createdAt: r.created_at,
+      lastLoginAt: r.last_login_at, createdAt: r.created_at, accessExpiresAt: r.access_expires_at,
     }));
   }
 
@@ -122,6 +130,7 @@ export class UsersService {
               (SELECT count(*)::int FROM complaints c WHERE c.worker_id = u.id AND c.status IN ('ASSIGNED','WORK_IN_PROGRESS','REOPENED')) AS "openTasks"
          FROM users u LEFT JOIN areas a ON a.id = u.area_id
         WHERE u.role = 'WORKER' AND u.status = 'ACTIVE' AND u.ulb_id = $1
+          AND (u.access_expires_at IS NULL OR u.access_expires_at > now())
         ORDER BY u.name`,
       [actor.ulbId],
     );

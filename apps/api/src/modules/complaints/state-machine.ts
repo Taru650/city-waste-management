@@ -14,6 +14,8 @@ export enum ComplaintAction {
   /** Timeline-only events (no status change), written by the SLA sweeper. */
   SLA_BREACH = 'SLA_BREACH',
   ESCALATE = 'ESCALATE',
+  /** Timeline-only: an event zone ended and its open complaints went back to the area supervisor. */
+  HANDOVER = 'HANDOVER',
 }
 
 /** 'SYSTEM' = background jobs and automatic routing. */
@@ -32,7 +34,10 @@ const OPEN_FOR_TRIAGE = [S.PENDING, S.ASSIGNED, S.REOPENED];
  * PENDING → ASSIGNED → WORK_IN_PROGRESS → RESOLVED → CLOSED, with REJECTED / DUPLICATE
  * exits during triage and RESOLVED → REOPENED when the citizen is not satisfied.
  */
-export type TransitionAction = Exclude<ComplaintAction, ComplaintAction.CREATE | ComplaintAction.SLA_BREACH | ComplaintAction.ESCALATE>;
+export type TransitionAction = Exclude<
+  ComplaintAction,
+  ComplaintAction.CREATE | ComplaintAction.SLA_BREACH | ComplaintAction.ESCALATE | ComplaintAction.HANDOVER
+>;
 
 export const RULES: Record<TransitionAction, Rule> = {
   [ComplaintAction.ROUTE]: { to: S.ASSIGNED, from: { SYSTEM: [S.PENDING] } },

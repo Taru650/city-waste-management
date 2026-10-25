@@ -17,19 +17,30 @@ import 'package:image/image.dart' as img;
 const apiUrl = String.fromEnvironment('CONTRACT_API');
 const fixturesPath = String.fromEnvironment('CONTRACT_FIXTURES');
 
-/// One app install: its own session store, device key and repositories.
+const citizenPackage = 'org.citywaste.cwm_citizen';
+const staffPackage = 'org.citywaste.cwm_staff';
+
+/// One app install: its own session store, device key, Play Integrity identity and repositories.
+/// The API runs with PLAY_INTEGRITY_MODE=enforce against a fake Google (tool/contract_test.sh).
 class Install {
-  Install() : store = MemoryTokenStore(), signer = SoftwareSigner.generate() {
+  Install({String package = citizenPackage, List<String>? device})
+      : store = MemoryTokenStore(),
+        signer = SoftwareSigner.generate(),
+        integrity = FakeIntegritySource(package, device: device ?? const ['MEETS_DEVICE_INTEGRITY', 'MEETS_BASIC_INTEGRITY']) {
     api = ApiClient(const CoreConfig(apiBaseUrl: apiUrl), store);
-    registry = DeviceRegistry(api, signer);
+    attestor = Attestor(api, integrity);
+    registry = DeviceRegistry(api, signer, attestor: attestor);
     uploader = MediaUploader(api, signer, registry, retryDelay: const Duration(milliseconds: 200));
   }
+  factory Install.staff({List<String>? device}) => Install(package: staffPackage, device: device);
   final MemoryTokenStore store;
   final SoftwareSigner signer;
+  final FakeIntegritySource integrity;
   late final ApiClient api;
+  late final Attestor attestor;
   late final DeviceRegistry registry;
   late final MediaUploader uploader;
-  AuthRepository get auth => AuthRepository(api);
+  AuthRepository get auth => AuthRepository(api, attestor: attestor);
   ComplaintsRepository get complaints => ComplaintsRepository(api);
   MastersRepository get masters => MastersRepository(api);
 }
@@ -58,7 +69,12 @@ void main() {
   String mobile(String key) => users[key]['mobile'] as String;
   const siteLat = 25.0052, siteLng = 80.0047; // inside Ward 1 of Nagar Nigam Alpha (Area North → supervisor)
 
-  setUpAll(() => HttpOverrides.global = null);
+  setUpAll(() async {
+    HttpOverrides.global = null;
+    // Guard against a silently misconfigured run: these tests assume attestation is enforced.
+    final c = await Dio().post<Map<String, dynamic>>('$apiUrl/attestation/challenge', data: {'purpose': 'device'});
+    expect(c.data!['enabled'], isTrue, reason: 'the API must run with PLAY_INTEGRITY_MODE=enforce (tool/contract_test.sh)');
+  });
 
   late Install citizen;
   late Install supervisor;
@@ -72,6 +88,7 @@ void main() {
       homeWardId: fixtures['wards']['A2'], name: 'Contract Citizen', mobile: m, email: 'contract$m@example.in', password: 'Swachh#Mobile2026',
     );
     await citizen.registry.register();
+    expect(citizen.integrity.nonces, hasLength(2), reason: 'Play Integrity for sign-up, then for the signing key (428 challenge)');
     final up = await citizen.uploader.uploadBytes(at(siteLat, siteLng), photo());
     expect(up.status, 'READY'); // signature, hash, magic bytes, scan and re-encode all passed server-side
 
@@ -88,7 +105,7 @@ void main() {
   });
 
   test('the supervisor sees it and assigns a worker from the staff app', () async {
-    supervisor = Install();
+    supervisor = Install.staff();
     expect(await supervisor.auth.login(mobile('supervisorA'), pw('supervisorA')), LoginOutcome.ok);
     final inbox = await supervisor.complaints.list();
     expect(inbox.items.map((x) => x.id), contains(complaintId));
@@ -99,7 +116,7 @@ void main() {
   });
 
   test('the worker starts and resolves with signed camera proof, via the offline outbox', () async {
-    worker = Install();
+    worker = Install.staff();
     expect(await worker.auth.login(mobile('workerA1'), pw('workerA1')), LoginOutcome.ok);
     await worker.registry.register();
     final dir = await Directory.systemTemp.createTemp('contract-outbox');
@@ -151,7 +168,7 @@ void main() {
   });
 
   test('staff on a temporary password: device registration waits for the password change (Staff app flow)', () async {
-    final temp = Install();
+    final temp = Install.staff();
     expect(await temp.auth.login(mobile('tempSupervisor'), pw('tempSupervisor')), LoginOutcome.ok);
     expect((await temp.auth.me()).mustChangePassword, isTrue);
     // This is why SessionNotifier.login skips registration: the API refuses it until the change.
@@ -168,6 +185,19 @@ void main() {
     expect(open.items.every((c) => c.status.isOpen), isTrue);
     final all = await supervisor.complaints.list(pageSize: 100);
     expect(all.total, greaterThanOrEqualTo(open.total));
+  });
+
+  test('Play Integrity is enforced: a worker on a basic-integrity phone cannot register a signing key', () async {
+    final weak = Install.staff(device: const ['MEETS_BASIC_INTEGRITY']);
+    expect(await weak.auth.login(mobile('workerA2'), pw('workerA2')), LoginOutcome.ok);
+    await expectLater(weak.registry.register(), throwsA(isA<ApiException>().having((e) => e.status, 'status', 403)));
+    // A Citizen-app token is not accepted for a staff account either.
+    final wrongApp = Install()..store.tokens = await weak.store.read();
+    await expectLater(wrongApp.registry.register(), throwsA(isA<ApiException>().having((e) => e.status, 'status', 403)));
+    // The genuine Staff app on a certified phone gets through (nonce bound to its own key).
+    final good = Install.staff()..store.tokens = await weak.store.read();
+    expect(await good.registry.register(), isNotEmpty);
+    expect(good.integrity.nonces, hasLength(1), reason: 'attested once, through the 428 challenge');
   });
 
   test('administrators are sent to the web portal (MFA) and cannot use the mobile apps', () async {

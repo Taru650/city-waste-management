@@ -17,6 +17,14 @@ export const templates = {
     title: { en: 'Complaint registered', hi: 'शिकायत दर्ज हुई' },
     body: { en: `Your complaint ${formatComplaintNo(no)} has been registered.`, hi: `आपकी शिकायत ${formatComplaintNo(no)} दर्ज कर ली गई है।` },
   }),
+  handedOver: (no: string, zone: string): NotificationContent => ({
+    type: 'COMPLAINT_HANDED_OVER',
+    title: { en: 'Complaint handed over', hi: 'शिकायत आपको सौंपी गई' },
+    body: {
+      en: `Event zone "${zone}" has ended. Complaint ${formatComplaintNo(no)} is now with you.`,
+      hi: `इवेंट ज़ोन "${zone}" समाप्त हो गया। शिकायत ${formatComplaintNo(no)} अब आपके पास है।`,
+    },
+  }),
   newInArea: (no: string): NotificationContent => ({
     type: 'COMPLAINT_NEW',
     title: { en: 'New complaint', hi: 'नई शिकायत' },
