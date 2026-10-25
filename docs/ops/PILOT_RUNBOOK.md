@@ -37,7 +37,13 @@ separately from database backups**: without them mobile numbers and emails canno
    ClamAV, SMTP with TLS, CORS origins, grievance officer).
 2. Start one or more API replicas (`PROCESS_ROLE=api`) and at least one worker (`PROCESS_ROLE=worker`),
    behind the TLS/WAF proxy. The portal must be reachable only through that proxy.
-3. `npm run seed` creates the first Web Admin (temporary password, MFA at first sign-in).
+3. Migrations run automatically (compose `migrate` service, before the API and workers; idempotent).
+   Elsewhere: `node dist/database/run-migrations.js` from the API image, once per release, before
+   the new API starts. Then the first Web Admin, once (enrols MFA and changes the password at first sign-in):
+   `docker compose run --rm -e SEED_ADMIN_MOBILE=… -e SEED_ADMIN_EMAIL=… -e SEED_ADMIN_PASSWORD=… migrate node dist/database/seed.js`.
+   The image has no npm/ts-node: `npm run seed` / `migration:run` are for development checkouts only.
+   Break-glass if the only Web Admin loses their authenticator and recovery codes (audited):
+   `docker compose run --rm -e RESET_ADMIN_MFA_MOBILE=… migrate node dist/database/seed.js`.
 4. Web Admin → District Admin → Sub Admin (each with authenticator MFA); Sub Admin enters wards,
    areas, staff (temporary passwords handed over in person).
 5. Build the apps in CI with the production `--dart-define`s; publish to an internal testing track

@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    paths: ['apps/**', '.github/workflows/ci.yml']
+    paths: ['apps/**', 'packages/**', 'infra/**', '.github/workflows/ci.yml']
   pull_request:
-    paths: ['apps/**', '.github/workflows/ci.yml']
+    paths: ['apps/**', 'packages/**', 'infra/**', '.github/workflows/ci.yml']
 
 permissions:
   contents: read
@@ -32,8 +32,8 @@ jobs:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/cwm_test
       REDIS_URL: redis://localhost:6379/15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -63,10 +63,10 @@ jobs:
   secrets-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -74,10 +74,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - run: docker build -t cwm-api:ci apps/api
-      - uses: aquasecurity/trivy-action@0.28.0
+      # Pinned by commit: in March 2026 76 of 77 trivy-action tags were force-pushed to credential-stealing
+      # code (GHSA-69fq-xp46-6x23); v0.35.0 was the unaffected release. Trivy v0.69.3 is a known-good binary.
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
+          version: v0.69.3
           image-ref: cwm-api:ci
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -99,8 +102,8 @@ jobs:
     env:
       E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/cwm_e2e_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -126,7 +129,7 @@ jobs:
       - name: Browser tests (Playwright, incl. portal security)
         working-directory: apps/web
         run: npx playwright install --with-deps chromium && npx playwright test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: failure()
         with:
           name: playwright-report
@@ -148,13 +151,13 @@ jobs:
     env:
       E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/cwm_e2e_test
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: 3.47.8
           channel: stable
           cache: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -188,13 +191,13 @@ jobs:
   android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - uses: subosito/flutter-action@v2
+      # The runner image ships the Android SDK (ANDROID_HOME, licences accepted); no third-party setup action.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: 3.47.8
           channel: stable
@@ -228,7 +231,7 @@ jobs:
             grep -q "android.permission.CAMERA" "$RUNNER_TEMP/$app-perms.txt"
             "$AAPT2" dump xmltree --file AndroidManifest.xml "$apk" | grep -E "allowBackup|usesCleartextTraffic" 
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: apks-ci-signed-not-for-release
           path: apps/mobile_*/build/app/outputs/flutter-apk/app-release.apk

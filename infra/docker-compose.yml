@@ -69,6 +69,7 @@ services:
       CLAMAV_HOST: clamav
     depends_on:
       db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
       minio-init: { condition: service_completed_successfully }
       clamav: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -93,6 +94,19 @@ services:
     tmpfs: [/tmp, /app/.next/cache]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+
+  # Schema migrations before the API and workers start (idempotent; the image has no npm or ts-node).
+  # First Web Admin, once: docker compose run --rm -e SEED_ADMIN_MOBILE=… -e SEED_ADMIN_EMAIL=… \
+  #   -e SEED_ADMIN_PASSWORD=… migrate node dist/database/seed.js
+  migrate:
+    <<: *api
+    command: ["node", "dist/database/run-migrations.js"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+    ports: []
+    healthcheck:
+      disable: true
 
   # Background jobs: video transcoding, push dispatch, SLA sweep, auto-close, media purge.
   # Scale with `docker compose up --scale worker=N` for peak events.

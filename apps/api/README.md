@@ -12,6 +12,7 @@ npm ci
 npm run migration:run
 SEED_ADMIN_PASSWORD='…' npm run seed    # first Web Admin; enrols TOTP at first login
 npm run start:dev
+# Production image (no npm, no ts-node): node dist/database/run-migrations.js; node dist/database/seed.js
 ```
 Background jobs: `npm run start:worker:dev` (or `PROCESS_ROLE=all` to run them inside the API process).
 
