@@ -1,0 +1,13 @@
+# Secrets scan (CI job secrets-scan): gitleaks' default rules, minus values that are public on purpose.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test-only secrets and documentation examples (never used outside tests or local setup)"
+paths = [
+  '''^apps/api/test/test-env\.ts$''',  # "Test-only secrets" for the API test suites
+  '''^apps/web/e2e/env\.mjs$''',       # "test-only secrets" for the portal e2e environment
+]
+regexes = [
+  '''Choose-A-Strong-Pass-1''',        # example admin password in docs/LOCAL_SETUP.md
+]
