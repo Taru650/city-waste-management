@@ -14,6 +14,8 @@ export interface AccessTokenClaims {
   sub: string;
   role: Role;
   tv: number;
+  /** Session (refresh-token family) the token was issued for; revoking the session revokes the token. */
+  sid: string;
   typ: 'access';
 }
 

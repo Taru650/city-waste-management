@@ -38,7 +38,7 @@ export class SessionService {
     familyId: string = randomUUID(),
     manager: EntityManager = this.ds.manager,
   ): Promise<SessionTokens> {
-    const claims: AccessTokenClaims = { sub: user.id, role: user.role, tv: user.token_version, typ: 'access' };
+    const claims: AccessTokenClaims = { sub: user.id, role: user.role, tv: user.token_version, sid: familyId, typ: 'access' };
     const accessToken = await this.jwt.signAsync(claims, {
       secret: this.config.jwtAccessSecret,
       algorithm: 'HS256',

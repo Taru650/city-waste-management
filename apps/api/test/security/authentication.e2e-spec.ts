@@ -52,7 +52,9 @@ describe('Security: authentication and sessions', () => {
 
   it('a forged role claim does not grant that role (role is read from the DB)', async () => {
     const u = await createUser(ctx, Role.CITIZEN, j);
-    const t = await jwt.signAsync({ sub: u.id, role: 'WEB_ADMIN', tv: 0, typ: 'access' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: 600 });
+    // A live session id, so the token passes every other check and only the role claim is forged.
+    const { sid } = jwt.decode((await login(ctx, u)).accessToken) as { sid: string };
+    const t = await jwt.signAsync({ sub: u.id, role: 'WEB_ADMIN', tv: 0, sid, typ: 'access' }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: 600 });
     // Even with the real secret, the role claim is ignored for authorisation.
     await ctx.http().get(api('/users')).set(bearer(t)).expect(403);
   });
@@ -71,6 +73,22 @@ describe('Security: authentication and sessions', () => {
     await ctx.http().post(api('/auth/refresh')).send({ refreshToken: s1.refreshToken }).expect(401);
     // the legitimate holder's newer token is now dead too
     await ctx.http().post(api('/auth/refresh')).send({ refreshToken: s2.refreshToken }).expect(401);
+    // ...and so is every access token of the family, including one the thief may already hold.
+    await ctx.http().get(api('/auth/me')).set(bearer(s2.accessToken)).expect(401);
+  });
+
+  it('rejects access tokens without a session id or with a session that does not exist', async () => {
+    const u = await createUser(ctx, Role.CITIZEN, j);
+    const sign = (extra: object) => jwt.signAsync({ sub: u.id, role: 'CITIZEN', tv: 0, typ: 'access', ...extra }, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: 600 });
+    const { sid } = jwt.decode((await login(ctx, u)).accessToken) as { sid: string };
+    await ctx.http().get(api('/auth/me')).set(bearer(await sign({ sid }))).expect(200);
+    for (const t of [await sign({}), await sign({ sid: 'not-a-uuid' }), await sign({ sid: '00000000-0000-4000-8000-000000000000' })]) {
+      await ctx.http().get(api('/auth/me')).set(bearer(t)).expect(401);
+    }
+    // Another user's live session does not unlock this user.
+    const other = await createUser(ctx, Role.CITIZEN, j);
+    const { sid: otherSid } = jwt.decode((await login(ctx, other)).accessToken) as { sid: string };
+    await ctx.http().get(api('/auth/me')).set(bearer(await sign({ sid: otherSid }))).expect(401);
   });
 
   it('logout-all invalidates outstanding access tokens immediately', async () => {

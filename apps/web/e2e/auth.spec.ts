@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { createHmac } from 'node:crypto';
+import { apiEnv } from './env.mjs';
 import { authenticator } from 'otplib';
 import { login, seed, signOut, sql } from './fixtures';
 
@@ -81,5 +83,69 @@ test.describe('Sign-in flows', () => {
     expect(names).not.toContain('cwm_rt');
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('a copied access cookie stops working once its session is signed out', async ({ page, context }) => {
+    await login(page, 'supervisorA');
+    const copied = (await context.cookies()).find((c) => c.name === 'cwm_at')!;
+    await signOut(page);
+    // Someone replays the cookie they copied before sign-out (shared office PC, malware, a proxy log).
+    await context.addCookies([copied]);
+    const res = await page.request.get('/bff/api/complaints', { maxRedirects: 0 });
+    expect(res.status()).toBe(401);
+    await page.goto('/dashboard');
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  });
+
+  test('a session ended elsewhere lands on sign-in, not in a redirect loop', async ({ page, context }) => {
+    await login(page, 'supervisorA');
+    const copied = (await context.cookies()).find((c) => c.name === 'cwm_at')!;
+    await signOut(page);
+    // The browser still holds an unexpired access token the API no longer accepts (session revoked,
+    // account disabled, password changed on another device). Open a page directly.
+    await context.addCookies([copied]);
+    await page.goto('/complaints');
+    await expect(page).toHaveURL(/\/login/);
+    await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  });
+
+  test('a token from before session binding is renewed silently, not sent to sign-in', async ({ page, context }) => {
+    await login(page, 'supervisorA');
+    const at = (await context.cookies()).find((c) => c.name === 'cwm_at')!;
+    // Same user and token version, but no session id: what every browser holds right after the upgrade.
+    const { sid: _sid, ...claims } = JSON.parse(Buffer.from(at.value.split('.')[1], 'base64url').toString());
+    const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+    const unsigned = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(claims)}`;
+    const legacy = `${unsigned}.${createHmac('sha256', apiEnv.JWT_ACCESS_SECRET).update(unsigned).digest('base64url')}`;
+    await context.addCookies([{ ...at, value: legacy }]);
+    await page.goto('/complaints');
+    await expect(page).toHaveURL(/\/complaints$/);
+    await expect(page.getByTestId('user-menu')).toBeVisible();
+    const renewed = (await context.cookies()).find((c) => c.name === 'cwm_at')!.value;
+    expect(JSON.parse(Buffer.from(renewed.split('.')[1], 'base64url').toString()).sid).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  test('the user menu stays with its button when the page scrolls', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await login(page, 'supervisorA');
+    await page.getByTestId('user-menu').click();
+    const item = page.getByRole('menuitem', { name: 'Sign out' });
+    await expect(item).toBeVisible();
+    // Where is the item at the instant the page scrolls (before any re-positioning)? A menu attached
+    // to <body> moves with the page while its button stays in the sticky header, then snaps back,
+    // and a click caught in between landed on nothing.
+    const drift = await item.evaluate(async (el) => {
+      const y0 = el.getBoundingClientRect().y;
+      let worst = 0;
+      const seen = () => { worst = Math.max(worst, Math.abs(el.getBoundingClientRect().y - y0)); };
+      window.addEventListener('scroll', seen, { capture: true });
+      for (const dy of [120, 120, 120]) { window.scrollBy(0, dy); seen(); await new Promise((r) => requestAnimationFrame(r)); }
+      window.removeEventListener('scroll', seen, { capture: true });
+      return { worst, scrolled: window.scrollY };
+    });
+    expect(drift.scrolled).toBeGreaterThan(100);
+    expect(drift.worst).toBeLessThan(2);
+    await expect(item).toBeVisible();
   });
 });

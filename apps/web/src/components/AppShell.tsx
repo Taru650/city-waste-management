@@ -3,10 +3,10 @@
 import {
   AlertOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined, EnvironmentOutlined, HomeOutlined, LogoutOutlined, MenuOutlined, TeamOutlined, UserOutlined,
 } from '@ant-design/icons';
-import { Avatar, Badge, Breadcrumb, Button, Drawer, Dropdown, Layout, Menu } from 'antd';
+import { App, Avatar, Badge, Breadcrumb, Button, Drawer, Dropdown, Layout, Menu } from 'antd';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Brand } from '@/components/Brand';
 import { call, useApi } from '@/lib/client/api';
 import { ROLE_LABELS } from '@/lib/client/format';
@@ -25,6 +25,8 @@ const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2)
 export function AppShell({ me, children }: { me: Me; children: React.ReactNode }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const { message } = App.useApp();
+  const signingOut = useRef(false);
   const { data: unread } = useApi<{ count: number }>('/notifications/unread-count', { refreshInterval: 60_000 });
 
   const items = [
@@ -56,7 +58,16 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
   ];
 
   const logout = async () => {
-    await call('/bff/auth/logout', { method: 'POST', body: {} });
+    if (signingOut.current) return;
+    signingOut.current = true;
+    try {
+      await call('/bff/auth/logout', { method: 'POST', body: {} });
+    } catch {
+      // Never leave an official believing they are signed out when they are not (shared office PCs).
+      signingOut.current = false;
+      message.error('Could not sign out. Check the connection and try again.');
+      return;
+    }
     hardNavigate('/login');
   };
 
@@ -84,7 +95,9 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
             <Link href="/notifications" aria-label={`Notifications${unread?.count ? `, ${unread.count} unread` : ''}`} style={{ display: 'grid', placeItems: 'center', width: 40, height: 40, borderRadius: 8 }}>
               <Badge count={unread?.count ?? 0} size="small"><BellOutlined style={{ fontSize: 19, color: '#13315c' }} /></Badge>
             </Link>
-            <Dropdown trigger={['hover', 'click']} menu={{ items: [
+            {/* Opens on click and lives inside the sticky header: attached to <body> it scrolled away from its
+                button and snapped back mid-click, so a "Sign out" click could land on nothing. */}
+            <Dropdown trigger={['click']} getPopupContainer={(trigger) => trigger.parentElement ?? document.body} menu={{ items: [
               { key: 'account', label: <Link href="/account">Account</Link> },
               { key: 'logout', icon: <LogoutOutlined />, label: 'Sign out', onClick: logout },
             ] }}>

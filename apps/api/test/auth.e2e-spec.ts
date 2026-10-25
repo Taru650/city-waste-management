@@ -77,6 +77,30 @@ describe('Auth (M1)', () => {
       await ctx.http().post(api('/auth/logout')).send({ refreshToken: s2.refreshToken }).expect(204);
       await ctx.http().post(api('/auth/refresh')).send({ refreshToken: s2.refreshToken }).expect(401);
     });
+
+    it('logout also ends the access tokens of that session, and only of that session', async () => {
+      const u = await createUser(ctx, Role.SUPERVISOR, j);
+      const office = await login(ctx, u);
+      const phone = await login(ctx, u);
+      await ctx.http().get(api('/complaints')).set(bearer(office.accessToken)).expect(200);
+      await ctx.http().post(api('/auth/logout')).send({ refreshToken: office.refreshToken }).expect(204);
+      // A copy of the signed-out browser's access token is dead at once, not 15 minutes later.
+      await ctx.http().get(api('/auth/me')).set(bearer(office.accessToken)).expect(401);
+      await ctx.http().get(api('/complaints')).set(bearer(office.accessToken)).expect(401);
+      // The other device stays signed in.
+      await ctx.http().get(api('/complaints')).set(bearer(phone.accessToken)).expect(200);
+    });
+
+    it('access tokens issued before a refresh keep working until that session ends', async () => {
+      const u = await createUser(ctx, Role.CITIZEN, j);
+      const s1 = await login(ctx, u);
+      const s2 = (await ctx.http().post(api('/auth/refresh')).send({ refreshToken: s1.refreshToken }).expect(200)).body;
+      // Requests in flight during a refresh still carry the previous access token.
+      await ctx.http().get(api('/auth/me')).set(bearer(s1.accessToken)).expect(200);
+      await ctx.http().post(api('/auth/logout')).send({ refreshToken: s2.refreshToken }).expect(204);
+      await ctx.http().get(api('/auth/me')).set(bearer(s1.accessToken)).expect(401);
+      await ctx.http().get(api('/auth/me')).set(bearer(s2.accessToken)).expect(401);
+    });
   });
 
   describe('forced password change for staff accounts', () => {
