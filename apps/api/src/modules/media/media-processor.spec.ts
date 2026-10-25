@@ -3,10 +3,11 @@ import { AppConfig } from '../../config/configuration';
 import { makePhoto, makeVideo, ssim } from '../../../test/media-fixtures';
 import { MediaProcessingError, MediaProcessor } from './media-processor';
 
-const config = { media: { videoMaxSeconds: 30, videoPreset: 'ultrafast', maxCaptureAgeHours: 24, maxGpsAccuracyM: 100 } } as AppConfig;
+const configFor = (photoEncoder: 'turbo' | 'mozjpeg') =>
+  ({ media: { videoMaxSeconds: 30, videoPreset: 'ultrafast', maxCaptureAgeHours: 24, maxGpsAccuracyM: 100, photoEncoder } }) as AppConfig;
 
-describe('MediaProcessor', () => {
-  const processor = new MediaProcessor(config);
+describe.each(['turbo', 'mozjpeg'] as const)('MediaProcessor (%s)', (encoder) => {
+  const processor = new MediaProcessor(configFor(encoder));
 
   describe('photos', () => {
     let original: Buffer;

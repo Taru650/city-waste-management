@@ -47,6 +47,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    // A push while the app is open: refresh what it is about and say so; a tapped push opens it.
+    ref.listen(foregroundPushProvider, (_, next) => next.whenData((m) {
+          ref.invalidate(myComplaintsProvider);
+          ref.invalidate(notificationsProvider);
+          if (m.title != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m.title!)));
+        }));
+    ref.listen(openedPushProvider, (_, next) => next.whenData((m) {
+          if (m.complaintId != null) Navigator.push(context, MaterialPageRoute<void>(builder: (_) => ComplaintDetailScreen(m.complaintId!)));
+        }));
     final pages = [const _MyComplaints(), const _Notifications(), const _Profile()];
     return Scaffold(
       appBar: AppBar(title: Text(s.t('appName')), actions: [

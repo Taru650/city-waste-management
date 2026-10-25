@@ -34,12 +34,16 @@ export interface ProcessedVideo {
 
 /**
  * Server-side normalisation after the app's own compression ("visually lossless"):
- * - photos: auto-rotate, fit within 1920 px, mozjpeg q82, all metadata (EXIF/GPS) stripped;
+ * - photos: auto-rotate, fit within 1920 px, JPEG q82 (libjpeg-turbo or mozjpeg, PHOTO_ENCODER), all metadata (EXIF/GPS) stripped;
  * - video: H.264 CRF 26, short edge ≤ 720 px, AAC 64 kbps mono, faststart, metadata stripped.
  */
 @Injectable()
 export class MediaProcessor {
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {}
+
+  private get mozjpeg() {
+    return this.config.media.photoEncoder === 'mozjpeg';
+  }
 
   async photo(input: Buffer): Promise<ProcessedPhoto> {
     try {
@@ -47,12 +51,12 @@ export class MediaProcessor {
       const main = await base
         .clone()
         .resize({ width: PHOTO_MAX_EDGE, height: PHOTO_MAX_EDGE, fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: PHOTO_QUALITY, mozjpeg: true })
+        .jpeg({ quality: PHOTO_QUALITY, mozjpeg: this.mozjpeg })
         .toBuffer({ resolveWithObject: true });
       const thumb = await base
         .clone()
         .resize({ width: THUMB_EDGE, height: THUMB_EDGE, fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 70, mozjpeg: true })
+        .jpeg({ quality: 70, mozjpeg: this.mozjpeg })
         .toBuffer();
       return { main: main.data, thumb, width: main.info.width, height: main.info.height };
     } catch (err) {

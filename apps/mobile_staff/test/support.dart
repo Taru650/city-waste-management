@@ -42,6 +42,8 @@ class StaffBackend extends FakeBackend {
     on('GET /complaints/c1', (_, _) => (200, complaintJson(status: status, zone: zone)));
     on('GET /complaints/c1/media', (_, _) => (200, []));
     on('GET /notifications', (_, _) => (200, {'total': 0, 'items': []}));
+    on('POST /notifications/push-tokens', (_, _) => (204, null));
+    on('DELETE /notifications/push-tokens', (_, _) => (204, null));
     on('GET /users/workers', (_, _) => (200, [
           {'id': 'wk1', 'name': 'Sunita', 'areaName': 'Area 1', 'openTasks': 3},
           {'id': 'wk2', 'name': 'Ramesh', 'areaName': 'Area 1', 'openTasks': 0},
@@ -81,6 +83,7 @@ class TestEnv {
   final store = MemoryTokenStore();
   final outboxStorage = MemoryOutboxStorage();
   final List<(double, double)> navigations = [];
+  final push = FakePushClient();
   int captures = 0;
 
   Future<CapturedMedia> fakeCapture() async {
@@ -101,6 +104,7 @@ class TestEnv {
         outboxStorageProvider.overrideWith((_) async => outboxStorage),
         captureLauncherProvider.overrideWithValue((context, {allowVideo = true}) => fakeCapture()),
         deviceIntegrityProvider.overrideWithValue(_FixedIntegrity(rooted)),
+        pushClientProvider.overrideWith((_) async => push),
         mapLauncherProvider.overrideWithValue((lat, lng) async {
           navigations.add((lat, lng));
           return true;

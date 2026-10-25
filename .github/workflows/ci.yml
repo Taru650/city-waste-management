@@ -179,3 +179,52 @@ jobs:
             grep -q 'android:usesCleartextTraffic="false"' "$m"
           done
           ! grep -rE "image_picker|file_picker" apps/mobile_*/pubspec.yaml packages/flutter_core/pubspec.yaml
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.8
+          channel: stable
+          cache: true
+      - name: Kotlin type-check of the native code (no SDK needed; fails fast)
+        run: flutter precache --android && bash packages/flutter_core/tool/kotlin_check.sh
+      - name: Throwaway release keystore (real keys live only in the release pipeline)
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/ci.jks" -storepass ci-store-pass -keypass ci-store-pass -alias ci \
+            -keyalg RSA -keysize 2048 -validity 1 -dname "CN=CI"
+          for app in mobile_citizen mobile_staff; do
+            printf 'storeFile=%s\nstorePassword=ci-store-pass\nkeyAlias=ci\nkeyPassword=ci-store-pass\n' "$RUNNER_TEMP/ci.jks" > "apps/$app/android/key.properties"
+          done
+      - name: Build release APKs (R8 + resource shrinking)
+        run: |
+          set -e
+          for app in mobile_citizen mobile_staff; do
+            (cd "apps/$app" && flutter pub get && flutter build apk --release \
+              --dart-define=API_BASE_URL=https://api.example.invalid/api/v1 \
+              --dart-define=CERT_PINS=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB= \
+              --dart-define=PLAY_CLOUD_PROJECT_NUMBER=1)
+          done
+      - name: Merged APK permissions (camera-only evidence survives plugin manifest merging)
+        run: |
+          set -e
+          AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/aapt2
+          for app in mobile_citizen mobile_staff; do
+            apk="apps/$app/build/app/outputs/flutter-apk/app-release.apk"
+            "$AAPT2" dump permissions "$apk" | tee "$RUNNER_TEMP/$app-perms.txt"
+            ! grep -E "READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|READ_MEDIA_|MANAGE_EXTERNAL_STORAGE" "$RUNNER_TEMP/$app-perms.txt"
+            grep -q "android.permission.CAMERA" "$RUNNER_TEMP/$app-perms.txt"
+            "$AAPT2" dump xmltree --file AndroidManifest.xml "$apk" | grep -E "allowBackup|usesCleartextTraffic" 
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apks-ci-signed-not-for-release
+          path: apps/mobile_*/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7

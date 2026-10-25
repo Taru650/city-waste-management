@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../offline/outbox.dart';
+import '../push/push.dart';
 import '../security/attestation.dart';
 
 typedef Route = FutureOr<(int, Object?)> Function(RequestOptions req, Object? body);
@@ -73,5 +74,35 @@ class FakeIntegritySource implements IntegrityTokenSource {
       'deviceIntegrity': {'deviceRecognitionVerdict': device},
     };
     return 'fake.${base64Url.encode(utf8.encode(jsonEncode(payload))).replaceAll('=', '')}';
+  }
+}
+
+/// Push transport stand-in: tests drive [foregroundCtl] / [openedCtl] and inspect the token flow.
+class FakePushClient implements PushClient {
+  FakePushClient({this.granted = true, this.currentToken = 'fcm-token-0000000000000000000001'});
+  final bool granted;
+  String? currentToken;
+  bool deleted = false;
+  final foregroundCtl = StreamController<PushMessage>.broadcast();
+  final openedCtl = StreamController<PushMessage>.broadcast();
+  final refreshCtl = StreamController<String>.broadcast();
+  PushMessage? initial;
+
+  @override
+  Future<bool> requestPermission() async => granted;
+  @override
+  Future<String?> token() async => currentToken;
+  @override
+  Stream<String> get tokenRefresh => refreshCtl.stream;
+  @override
+  Stream<PushMessage> get foreground => foregroundCtl.stream;
+  @override
+  Stream<PushMessage> get opened => openedCtl.stream;
+  @override
+  Future<PushMessage?> initialMessage() async => initial;
+  @override
+  Future<void> deleteToken() async {
+    deleted = true;
+    currentToken = null;
   }
 }

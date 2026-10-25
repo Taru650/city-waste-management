@@ -31,6 +31,11 @@ export interface AppConfig {
     videoMaxSeconds: number;
     /** x264 preset; 'slow' gives the best size/quality for production. */
     videoPreset: string;
+    /**
+     * Photo re-encoder. 'turbo' (libjpeg-turbo) costs ~7× less CPU than 'mozjpeg' for ~20 % larger
+     * files (load test, infra/load); CPU at peak is the scarcer resource. Both strip metadata.
+     */
+    photoEncoder: 'turbo' | 'mozjpeg';
   };
   clamav: { host?: string; port: number };
   redisUrl: string;
@@ -107,6 +112,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       maxGpsAccuracyM: Number(env.MEDIA_MAX_GPS_ACCURACY_M ?? 100),
       videoMaxSeconds: Number(env.VIDEO_MAX_SECONDS ?? 30),
       videoPreset: env.VIDEO_PRESET ?? 'slow',
+      photoEncoder: (env.PHOTO_ENCODER ?? 'turbo') as 'turbo' | 'mozjpeg',
     },
     clamav: { host: env.CLAMAV_HOST || undefined, port: Number(env.CLAMAV_PORT ?? 3310) },
     redisUrl: env.REDIS_URL ?? 'redis://127.0.0.1:6379',
@@ -134,6 +140,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       staffLevel: (env.PLAY_INTEGRITY_STAFF_LEVEL ?? 'DEVICE') as IntegrityLevel,
     },
   };
+  if (!['turbo', 'mozjpeg'].includes(config.media.photoEncoder)) throw new Error('PHOTO_ENCODER must be turbo or mozjpeg');
   if (!['api', 'worker', 'all'].includes(config.processRole)) throw new Error('PROCESS_ROLE must be api, worker or all');
   if (config.mail.transport === 'smtp' && !config.mail.smtpUrl) throw new Error('SMTP_URL is required when MAIL_TRANSPORT=smtp');
   if (config.jwtAccessSecret === config.jwtMfaSecret) {

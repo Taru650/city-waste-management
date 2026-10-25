@@ -69,6 +69,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
   @override
   Widget build(BuildContext context) {
     final s = S.of(context);
+    // New task / handover pushes: refresh the inbox; a tapped push opens the task.
+    ref.listen(foregroundPushProvider, (_, next) => next.whenData((m) {
+          ref.invalidate(inboxProvider);
+          ref.invalidate(staffNotificationsProvider);
+          if (m.title != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m.title!)));
+        }));
+    ref.listen(openedPushProvider, (_, next) => next.whenData((m) {
+          if (m.complaintId != null) Navigator.push(context, MaterialPageRoute<void>(builder: (_) => TaskDetailScreen(m.complaintId!)));
+        }));
     final supervisor = widget.me.role == Role.supervisor;
     final pages = [_Inbox(supervisor: supervisor), const _Notifications(), _Profile(me: widget.me)];
     return Scaffold(

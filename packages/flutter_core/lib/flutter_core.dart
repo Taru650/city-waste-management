@@ -15,6 +15,7 @@ export 'src/config.dart';
 export 'src/i18n/strings.dart';
 export 'src/models/models.dart';
 export 'src/offline/outbox.dart';
+export 'src/push/push.dart';
 export 'src/security/attestation.dart';
 export 'src/security/device_integrity.dart';
 export 'src/security/device_registry.dart';

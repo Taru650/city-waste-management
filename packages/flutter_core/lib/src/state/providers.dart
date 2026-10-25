@@ -20,6 +20,7 @@ import '../models/models.dart';
 import '../offline/outbox.dart';
 import '../security/device_registry.dart';
 import '../security/device_signer.dart';
+import '../push/push.dart';
 import '../security/attestation.dart';
 import '../security/device_integrity.dart';
 
@@ -85,7 +86,9 @@ class SessionNotifier extends AsyncNotifier<Me?> {
     ref.onDispose(() => _expiry?.cancel());
     if (!await ref.read(authRepoProvider).hasSession()) return null;
     try {
-      return await _load();
+      final me = await _load();
+      if (!me.mustChangePassword) _startPush();
+      return me;
     } on ApiException catch (e) {
       if (e.isUnauthorized) return null;
       rethrow;
@@ -105,6 +108,7 @@ class SessionNotifier extends AsyncNotifier<Me?> {
       // The API refuses everything but the password change while a temporary password is set;
       // the device is registered in passwordChanged() instead.
       if (_capturesMedia(me) && !me.mustChangePassword) await ref.read(deviceRegistryProvider).register();
+      if (!me.mustChangePassword) _startPush();
       state = AsyncData(me);
     }
     return outcome;
@@ -113,6 +117,7 @@ class SessionNotifier extends AsyncNotifier<Me?> {
   Future<void> registered() async {
     final me = await _load();
     await ref.read(deviceRegistryProvider).register();
+    _startPush();
     state = AsyncData(me);
   }
 
@@ -122,7 +127,13 @@ class SessionNotifier extends AsyncNotifier<Me?> {
   Future<void> passwordChanged() async {
     final me = await _load();
     if (_capturesMedia(me)) await ref.read(deviceRegistryProvider).register();
+    _startPush();
     state = AsyncData(me);
+  }
+
+  /// Best-effort, in the background: sign-in never waits for (or fails because of) push.
+  void _startPush() {
+    unawaited(ref.read(pushRegistrarProvider.future).then((r) => r.start()).catchError((_) {}));
   }
 
   static bool _capturesMedia(Me me) => const {Role.citizen, Role.worker, Role.supervisor, Role.subAdmin}.contains(me.role);
@@ -133,6 +144,10 @@ class SessionNotifier extends AsyncNotifier<Me?> {
     } catch (_) {
       // storage unavailable: nothing to clear
     }
+    try {
+      // While the session is still valid: this install stops receiving this user's notifications.
+      await (await ref.read(pushRegistrarProvider.future)).stop();
+    } catch (_) {}
     await ref.read(authRepoProvider).logout();
     await ref.read(deviceRegistryProvider).forget();
     state = const AsyncData(null);
@@ -140,6 +155,26 @@ class SessionNotifier extends AsyncNotifier<Me?> {
 }
 
 final sessionProvider = AsyncNotifierProvider<SessionNotifier, Me?>(SessionNotifier.new);
+
+/// Firebase Cloud Messaging, or null when the build has no Firebase settings (tests override it).
+final pushClientProvider = FutureProvider<PushClient?>((ref) => FirebasePushClient.create(FirebaseSettings.fromEnvironment()));
+final pushRegistrarProvider = FutureProvider<PushRegistrar>((ref) async =>
+    PushRegistrar(await ref.watch(pushClientProvider.future), ref.watch(notificationsRepoProvider), platform: Platform.isIOS ? 'IOS' : 'ANDROID'));
+
+/// Pushes that arrive while the app is open (refresh lists, show a banner).
+final foregroundPushProvider = StreamProvider<PushMessage>((ref) async* {
+  final c = await ref.watch(pushClientProvider.future);
+  if (c != null) yield* c.foreground;
+});
+
+/// The push the user tapped to open the app (cold start or from the background).
+final openedPushProvider = StreamProvider<PushMessage>((ref) async* {
+  final c = await ref.watch(pushClientProvider.future);
+  if (c == null) return;
+  final first = await c.initialMessage();
+  if (first != null) yield first;
+  yield* c.opened;
+});
 
 /// Opens the in-app camera and returns the capture (null if cancelled). Tests override this.
 typedef CaptureLauncher = Future<CapturedMedia?> Function(BuildContext context, {bool allowVideo});

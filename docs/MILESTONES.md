@@ -12,8 +12,8 @@ security) pass in CI. The next milestone does not start until then.
 | M5 | Reports and analytics (pendency, ageing, disposal time, quality, exports) | ✅ Done (with M6) |
 | M6 | Next.js web portal (admins, supervisors) | ✅ Done |
 | M7 | Flutter Citizen app and Staff app | ✅ Done (code + tests; not yet run on a phone, see below) |
-| M8 | Event zones, load test (k6, 10× peak), device attestation + app CAPTCHA, first device tests | ⏭ Next |
-| M9 | Security sign-off: DAST (OWASP ZAP), MobSF, external pentest, CERT-In audit, pilot ULB | Planned |
+| M8 | Play Integrity, event zones + temporary staff, push in apps, load test (k6, 10× peak), APK build in CI | ✅ Done (phone tests carried to M9) |
+| M9 | First phone tests (low-end, 3G), DAST (OWASP ZAP), MobSF, external pentest, CERT-In audit, pilot ULB | ⏭ Next |
 
 ---
 
@@ -53,7 +53,7 @@ security) pass in CI. The next milestone does not start until then.
 - Device keys: EC P-256 per app install (`POST /devices`), max 5 active, revoked by logout-all and password reset.
 - Upload flow: `POST /media/upload-url` (pre-signed S3 PUT, type + size signed, 10 min) → `POST /media/:id/confirm` with a signed capture manifest. Contract for the apps: [`MEDIA_CAPTURE_CONTRACT.md`](MEDIA_CAPTURE_CONTRACT.md).
 - Server checks: ECDSA signature by the registered key, manifest bound to this upload, capture ≤ 24 h old and not in the future, no mock GPS, accuracy ≤ 100 m, exact size, SHA-256, magic bytes, same capture never accepted twice, ClamAV INSTREAM scan (fail-closed, retryable).
-- Compression: photos auto-rotated, ≤ 1920 px, mozjpeg q82, EXIF/GPS stripped, 320 px thumbnail; videos H.264 CRF 26 with the short edge ≤ 720 px, AAC 64 kbps, faststart, metadata stripped, ≤ 30 s, background queue resumed on restart. Decompression-bomb guard (40 MP).
+- Compression: photos auto-rotated, ≤ 1920 px, q82 (mozjpeg; since M8 libjpeg-turbo by default, see load test), EXIF/GPS stripped, 320 px thumbnail; videos H.264 CRF 26 with the short edge ≤ 720 px, AAC 64 kbps, faststart, metadata stripped, ≤ 30 s, background queue resumed on restart. Decompression-bomb guard (40 MP).
 - Measured: 12 MP photo 4.87 MB → 127 KB at SSIM 0.995; 4 s 1080p clip 13.2 MB → 2.5 MB at 720p (fastest preset; production uses `slow`).
 - Evidence rules: complaint needs ≥ 1 capture; worker START/RESOLVE need ≥ 1 photo captured after filing; ≤ 5 photos + 1 video per stage; only the capturer can attach, once; distance from the complaint recorded and flagged beyond 100 m.
 - `GET /complaints/:id/media`: before/after evidence per stage, 5-minute signed URLs, scoped like the complaint.
@@ -129,10 +129,39 @@ Shared code in `packages/flutter_core`; two apps, `apps/mobile_citizen` (Swachh 
 - No APK was built and nothing has run on a phone or emulator: the Android SDK download host is blocked in the build environment. The Kotlin (Keystore signing, root checks) and Gradle changes are therefore uncompiled. First action of M8: build in CI with the Android SDK and test on a low-end phone over 3G.
 - App CAPTCHA (production blocker, see SECURITY.md); Play Integrity; push notifications (needs the Firebase project files); iOS Secure Enclave signing (Android-first, iOS has no native signer yet); MobSF scan.
 
-## M8 — Peak events and scale
-- Build both APKs in CI (Android SDK), run on a low-end Android phone over 3G, fix what breaks.
-- App CAPTCHA / Play Integrity at registration, forgot-password and device registration; FCM push in the apps.
-- Event zones (polygon, dates, temporary staff, tighter SLA); k6 load test at 10× daily volume in one hour.
+## M8 — Attestation, peak events and scale ✅ (device tests still outstanding)
+**Play Integrity (closes the M7 production blocker)**
+- The apps have no CAPTCHA; they now prove a genuine, Play-recognised copy of our app on a genuine phone. Sign-up and forgot-password accept CAPTCHA (portal) or Play Integrity (apps).
+- Device signing keys are attested through a 428 challenge whose nonce is bound to the public key; verdicts are stored and refreshed every 30 days; uploads from unattested keys are refused once enforcing.
+- Citizens need `MEETS_BASIC_INTEGRITY` (cheap uncertified phones keep working); staff need `MEETS_DEVICE_INTEGRITY` (their photos are the evidence that work was done).
+- Modes `off` / `monitor` / `enforce`; production refuses to start unless enforcing with certificate digests configured. Google unreachable → 503 when enforcing (fail closed).
 
-## M9 — Security sign-off and pilot
-- OWASP ZAP full scan against staging, external pentest, CERT-In-empanelled audit, DPDP consent and deletion flows, pilot in one ULB.
+**Event zones and temporary staff**
+- Zones (polygon, time window, optional zone supervisor, tighter deadline) per ULB. Complaints filed inside a running zone go to the zone supervisor with min(type, zone) deadline.
+- Rules: valid polygon, ≤ 100 km², must overlap the ULB's wards, ≤ 92 days, no overlapping active zones; zone supervisor's access must outlast the zone.
+- When a zone ends or is cancelled, open complaints go back to the area supervisors (timeline `HANDOVER` + notification), every 5 minutes, idempotent.
+- Temporary staff: an access end time stops sign-in, open sessions and refresh at once.
+- Portal: Event zones page (GeoJSON upload with map preview, stats drawer, cancel), zone dashboard (`/dashboard?eventZoneId=`), zone filter on dashboard and inbox, temporary staff in the staff form. Apps show the zone on the task.
+
+**Push notifications in the apps:** FCM token registered after sign-in (and on rotation), removed at sign-out; foreground pushes refresh lists, tapped pushes open the complaint. Firebase settings come from `--dart-define`; without them the apps use the in-app inbox only.
+
+**Android build verification:** `tool/kotlin_check.sh` type-checks both apps' Kotlin against real Android framework classes and Flutter's embedding (compile-only stubs only for Google-Maven libraries); CI job `android` builds signed release APKs with R8 and fails if storage/media permissions survive manifest merging.
+
+**Load test (k6, `infra/load`, details in [`infra/load/RESULTS.md`](../infra/load/RESULTS.md))** — target 10× daily volume in one hour = 2.8 complaints/s, each with three signed, fully verified photos (filing, start, resolve), plus supervisors, workers and dashboards, all on one 4-core machine together with k6:
+- 1× target for 10 minutes: 1,763 filed, 1,749 resolved, **0 failed requests**, all thresholds met (filing p95 103 ms, media confirm p95 1.2 s).
+- The step test found the bottleneck: mozjpeg photo re-encoding (~300 ms CPU per photo). At 2× it pushed confirm p95 to 7.7 s. With libjpeg-turbo (~40 ms, ~50 % larger files, same visual quality) 2× passes with confirm p95 333 ms at 1.4 cores. Default is now `PHOTO_ENCODER=turbo`.
+- Knee at ~3× target on this box (filing p95 3.4 s at 4×): machine saturated, plus gap-free per-ULB numbering serialises filings in a single ULB by design.
+
+**Exit criteria**
+- API: 17 attestation e2e (enforce + monitor), 15 event-zone/temporary-staff e2e, verdict and config unit tests; full suite green.
+- Dart: attestation and push unit tests; contract test (10) runs the real API **with Play Integrity enforced** against a fake Google and fails if enforcement is not actually on.
+- Portal: 32 Playwright tests incl. event zone creation in the browser and temporary staff.
+
+**Still not done**
+- Nothing has run on a phone yet, and the CI APK job has not run (no PR). Low-end phone over 3G testing moves to M9.
+- iOS: no App Attest, so iOS keys are refused when enforcing.
+
+## M9 — Phones, security sign-off and pilot
+- First real-device run: both APKs from CI on a low-end Android phone over 3G (camera, GPS gate, Keystore signing, Play Integrity, offline queue, push); fix what breaks.
+- Needs from the ULB/state team: Play Console apps, Google Cloud project + Play Integrity service account, Firebase project, release keystore.
+- MobSF on the APKs, OWASP ZAP full scan against staging, external pentest, CERT-In-empanelled audit, DPDP consent and deletion flows, hour-long soak on staging, pilot in one ULB.

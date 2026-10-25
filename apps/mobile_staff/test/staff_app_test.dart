@@ -184,6 +184,34 @@ void main() {
     expect(find.text('Event: Rajim Mela'), findsOneWidget);
   });
 
+  testWidgets('push: token registered at sign-in; a new-task push refreshes the inbox; a tapped push opens the task; sign-out removes the token', (t) async {
+    final env = TestEnv(StaffBackend());
+    await t.pumpWidget(env.app(const StaffApp()));
+    await t.pumpAndSettle();
+    await signIn(t);
+    await settleIo(t); // registration runs in the background after sign-in
+    expect(env.backend.bodiesOf('POST /notifications/push-tokens').single, {'token': env.push.currentToken, 'platform': 'ANDROID'});
+
+    final before = env.backend.queries.length;
+    env.push.foregroundCtl.add(const PushMessage(title: 'New task assigned', complaintId: 'c1'));
+    await t.pumpAndSettle();
+    expect(find.text('New task assigned'), findsOneWidget);
+    expect(env.backend.queries.length, greaterThan(before), reason: 'inbox reloaded');
+
+    env.push.openedCtl.add(const PushMessage(complaintId: 'c1'));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('navigate')), findsOneWidget, reason: 'task detail opened');
+    await t.pageBack();
+    await t.pumpAndSettle();
+
+    await t.tap(find.text('Profile'));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('logout')));
+    await settleIo(t);
+    expect(env.backend.bodiesOf('DELETE /notifications/push-tokens').single, {'token': 'fcm-token-0000000000000000000001'});
+    expect(env.push.deleted, isTrue);
+  });
+
   test('action matrix mirrors the API state machine', () {
     final w = StaffActions(Role.worker, ComplaintStatus.assigned);
     expect([w.start, w.resolve, w.assign, w.reject], [true, false, false, false]);

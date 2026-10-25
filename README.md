@@ -16,7 +16,7 @@ apps/web               Next.js portal for administrators and supervisors (dashbo
 apps/mobile_citizen    Flutter Citizen app (Swachh Seva)
 apps/mobile_staff      Flutter Staff app for supervisors and field workers (Swachh Seva Staff)
 packages/flutter_core  shared Dart: API client, camera capture + signing, offline outbox, Hindi/English
-infra/                 docker-compose (pilot); k8s later
+infra/                 docker-compose (pilot); infra/load: k6 load test; k8s later
 docs/                  plan, milestones, security
 ```
 
