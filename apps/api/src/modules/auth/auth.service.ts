@@ -15,6 +15,7 @@ import { NOTICE_VERSION } from '../privacy/notice';
 import { PrivacyService } from '../privacy/privacy.service';
 import { ChangePasswordDto, LoginDto, RegisterCitizenDto, ResetPasswordDto } from './dto/auth.dto';
 import { MAIL_SERVICE, MailService } from './mail.service';
+import { BreachedPasswordService } from './breached-password.service';
 import { assertStrongPassword } from './password-policy';
 import { ClientInfo, SessionService, SessionTokens } from './session.service';
 
@@ -74,12 +75,14 @@ export class AuthService {
     @Inject(MAIL_SERVICE) private readonly mail: MailService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     private readonly privacy: PrivacyService,
+    private readonly breached: BreachedPasswordService,
   ) {
     this.dummyHash = argon2.hash(newOpaqueToken(), ARGON2_OPTIONS);
   }
 
   async registerCitizen(dto: RegisterCitizenDto, client: ClientInfo) {
     assertStrongPassword(dto.password, { mobile: dto.mobile, email: dto.email });
+    await this.breached.assertNotBreached(dto.password);
     const [ward] = await this.ds.query(
       `SELECT w.id, w.ulb_id, u.district_id FROM wards w JOIN ulbs u ON u.id = w.ulb_id
         WHERE w.id = $1 AND w.active AND u.active`,
@@ -89,7 +92,9 @@ export class AuthService {
 
     const mobileHash = this.pii.blindIndex(dto.mobile);
     const emailHash = this.pii.blindIndex(dto.email);
-    const [taken] = await this.ds.query(`SELECT 1 FROM users WHERE mobile_hash = $1 OR email_hash = $2`, [mobileHash, emailHash]);
+    const [taken] = await this.ds.query(`SELECT 1 FROM users WHERE mobile_hash = ANY($1) OR email_hash = ANY($2)`, [
+      this.pii.blindIndexes(dto.mobile), this.pii.blindIndexes(dto.email),
+    ]);
     // Registration has to say *something* on a clash; the generic wording plus rate limits limit enumeration.
     if (taken) throw new ConflictException('An account with this mobile number or email already exists');
 
@@ -177,8 +182,8 @@ export class AuthService {
     if (!user?.mfa_enabled || user.locked) throw new UnauthorizedException('Invalid code');
     const used = await mutateReturning(
       this.ds,
-      `UPDATE mfa_recovery_codes SET used_at = now() WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL RETURNING id`,
-      [user.id, this.pii.blindIndex(normalizeRecoveryCode(recoveryCode))],
+      `UPDATE mfa_recovery_codes SET used_at = now() WHERE user_id = $1 AND code_hash = ANY($2) AND used_at IS NULL RETURNING id`,
+      [user.id, this.pii.blindIndexes(normalizeRecoveryCode(recoveryCode))],
     );
     if (!used.length) {
       await this.recordFailure(user, client);
@@ -237,6 +242,7 @@ export class AuthService {
     }
     if (dto.currentPassword === dto.newPassword) throw new BadRequestException('New password must be different');
     assertStrongPassword(dto.newPassword, this.decryptContacts(user));
+    await this.breached.assertNotBreached(dto.newPassword);
     const hash = await argon2.hash(dto.newPassword, ARGON2_OPTIONS);
     return this.ds.transaction(async (m) => {
       await this.sessions.revokeAll(user.id, m);
@@ -276,6 +282,7 @@ export class AuthService {
   }
 
   async resetPassword(dto: ResetPasswordDto, client: ClientInfo): Promise<void> {
+    await this.breached.assertNotBreached(dto.newPassword); // before the row lock: a network call
     await this.ds.transaction(async (m) => {
       const [reset] = await m.query(
         `SELECT pr.id, pr.user_id FROM password_resets pr
@@ -380,8 +387,8 @@ export class AuthService {
 
   private async findByIdentifier(identifier: string): Promise<UserRow | undefined> {
     const [row] = await this.ds.query(
-      `SELECT ${USER_COLUMNS} FROM users WHERE mobile_hash = $1 OR email_hash = $1 LIMIT 1`,
-      [this.pii.blindIndex(identifier)],
+      `SELECT ${USER_COLUMNS} FROM users WHERE mobile_hash = ANY($1) OR email_hash = ANY($1) LIMIT 1`,
+      [this.pii.blindIndexes(identifier)],
     );
     return row;
   }

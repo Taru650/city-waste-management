@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post } f
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthUser } from '../../common/auth-user';
 import { Client } from '../../common/client-info';
-import { CurrentUser, Roles } from '../../common/decorators';
+import { AllowWithoutConsent, CurrentUser, Roles } from '../../common/decorators';
 import { Role } from '../../common/enums';
 import { ClientInfo } from '../auth/session.service';
 import { DevicesService } from './devices.service';
@@ -20,16 +20,20 @@ const CAPTURING_ROLES = [Role.CITIZEN, Role.WORKER, Role.SUPERVISOR, Role.SUB_AD
 export class MediaController {
   constructor(private readonly media: MediaService, private readonly devices: DevicesService) {}
 
+  // Device keys secure the account (sign-in registers one before the consent screen appears).
+  @AllowWithoutConsent()
   @Post('devices')
   registerDevice(@CurrentUser() user: AuthUser, @Body() dto: RegisterDeviceDto, @Client() client: ClientInfo) {
     return this.devices.register(user, dto, client.ip);
   }
 
+  @AllowWithoutConsent()
   @Get('devices')
   listDevices(@CurrentUser() user: AuthUser) {
     return this.devices.list(user);
   }
 
+  @AllowWithoutConsent()
   @Delete('devices/:id') @HttpCode(204)
   async revokeDevice(@CurrentUser() user: AuthUser, @Param('id', uuid) id: string, @Client() client: ClientInfo) {
     await this.devices.revoke(user, id, client.ip);

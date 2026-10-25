@@ -30,9 +30,22 @@ keep system clocks synchronised to NTP (NIC / NPL servers).
 |---|---|---|
 | `JWT_ACCESS_SECRET` / `JWT_MFA_SECRET` | everyone signs in again within 15 min (refresh tokens still valid unless revoked) | change in the vault, redeploy |
 | Refresh tokens | everyone signs in again | SQL above |
-| `PII_ENCRYPTION_KEY` | **needs a re-encryption job (not implemented yet — see SECURITY.md gaps)** | — |
+| `PII_ENCRYPTION_KEY` / `PII_HASH_KEY` | none for users (sign-in, MFA and lookups keep working throughout) | see below |
 | Release keystore | Play app signing key cannot change; upload key can be reset through Play Console | Play Console |
 | Play Integrity / FCM service accounts | none for users | create new key, update vault, delete old key |
+
+### Rotating the PII keys (database or key leaked)
+1. Generate new 32-byte keys in the vault. Deploy **every** API and worker replica with
+   `PII_ENCRYPTION_KEY`/`PII_HASH_KEY` = new and `PII_ENCRYPTION_KEY_PREVIOUS`/`PII_HASH_KEY_PREVIOUS` = old.
+   From then on everything written uses the new keys; old values are still read and found.
+2. Run the job (resumable, safe while the app runs):
+   `docker compose run --rm migrate node dist/database/rotate-pii-keys.js`. Exit code 2 means rows
+   changed meanwhile or were unreadable: run it again; investigate any it lists as unreadable.
+3. If the hash key changed: every user with MFA regenerates recovery codes (portal → Account),
+   because their hashes cannot be recomputed. The job prints how many users hold codes.
+4. Remove the `*_PREVIOUS` keys and redeploy. Take a fresh backup; older backups need the old keys,
+   keep those (offline) for as long as those backups are retained.
+Tested end to end in `test/security/key-rotation.e2e-spec.ts`.
 
 ## Contacts (fill before go-live)
 | Role | Name | Phone | Email |

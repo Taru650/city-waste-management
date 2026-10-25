@@ -14,6 +14,7 @@ import { Role } from '../src/common/enums';
 import { APP_CONFIG, AppConfig } from '../src/config/configuration';
 import { ARGON2_OPTIONS } from '../src/modules/auth/auth.service';
 import { MAIL_SERVICE, MailService } from '../src/modules/auth/mail.service';
+import { NOTICE_VERSION, PURPOSE } from '../src/modules/privacy/notice';
 
 export const PASSWORD = 'Swachh#2026city';
 
@@ -124,7 +125,7 @@ export async function createUser(
   ctx: TestCtx,
   role: Role,
   j?: Jurisdiction,
-  opts: { mustChangePassword?: boolean; mfa?: boolean } = {},
+  opts: { mustChangePassword?: boolean; mfa?: boolean; consent?: boolean } = {},
 ): Promise<TestUser> {
   const mobile = uniqueMobile();
   const email = `u${mobile}@example.gov.in`;
@@ -146,6 +147,10 @@ export async function createUser(
       isCitizen ? j!.districtId : null, isCitizen ? j!.ulbId : null, isCitizen ? j!.wards[0].id : null,
     ],
   );
+  // Registration records consent in the same transaction; a citizen without it only exists after a notice change.
+  if (isCitizen && (opts.consent ?? true)) {
+    await ctx.ds.query(`INSERT INTO consents (user_id, purpose, notice_version, language) VALUES ($1, $2, $3, 'en')`, [row.id, PURPOSE, NOTICE_VERSION]);
+  }
   return { id: row.id, role, mobile, email, password: PASSWORD, mfaSecret };
 }
 

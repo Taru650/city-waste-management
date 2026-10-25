@@ -7,6 +7,9 @@ export interface AppConfig {
   jwtMfaSecret: string;
   piiEncryptionKey: Buffer;
   piiHashKey: Buffer;
+  /** Set only while rotating (docs/ops/INCIDENT_RESPONSE.md): still read, never written. */
+  piiEncryptionKeyPrevious: Buffer | null;
+  piiHashKeyPrevious: Buffer | null;
   accessTokenTtlSeconds: number;
   refreshTtlDaysCitizen: number;
   refreshTtlDaysStaff: number;
@@ -45,6 +48,8 @@ export interface AppConfig {
   fcm: { serviceAccountJson?: string; apiBase: string };
   /** DPDP Act: published in the privacy notice. */
   grievanceOfficer: { name: string; email: string; phone: string };
+  /** HIBP k-anonymity range API: only the first 5 hex characters of the password's SHA-1 leave the server. */
+  breachedPasswords: { mode: 'on' | 'off' | ''; url: string; timeoutMs: number };
   playIntegrity: {
     /** off: no checks (dev/test). monitor: verdicts recorded, never blocking. enforce: required (production). */
     mode: 'off' | 'monitor' | 'enforce';
@@ -74,6 +79,13 @@ function key32(env: NodeJS.ProcessEnv, name: string): Buffer {
   return buf;
 }
 
+function optionalKey32(env: NodeJS.ProcessEnv, name: string, current: Buffer): Buffer | null {
+  if (!env[name]) return null;
+  const buf = key32(env, name);
+  if (buf.equals(current)) throw new Error(`${name} must differ from the current key`);
+  return buf;
+}
+
 function secret(env: NodeJS.ProcessEnv, name: string): string {
   const value = required(env, name);
   if (value.length < 32) throw new Error(`${name} must be at least 32 characters`);
@@ -92,6 +104,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     jwtMfaSecret: secret(env, 'JWT_MFA_SECRET'),
     piiEncryptionKey: key32(env, 'PII_ENCRYPTION_KEY'),
     piiHashKey: key32(env, 'PII_HASH_KEY'),
+    piiEncryptionKeyPrevious: null,
+    piiHashKeyPrevious: null,
     accessTokenTtlSeconds: Number(env.ACCESS_TOKEN_TTL_SECONDS ?? 900),
     refreshTtlDaysCitizen: Number(env.REFRESH_TOKEN_TTL_DAYS_CITIZEN ?? 30),
     refreshTtlDaysStaff: Number(env.REFRESH_TOKEN_TTL_DAYS_STAFF ?? 7),
@@ -134,6 +148,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       email: env.GRIEVANCE_OFFICER_EMAIL ?? '',
       phone: env.GRIEVANCE_OFFICER_PHONE ?? '',
     },
+    breachedPasswords: {
+      mode: (env.BREACHED_PASSWORD_CHECK ?? '') as AppConfig['breachedPasswords']['mode'],
+      url: (env.BREACHED_PASSWORD_URL ?? 'https://api.pwnedpasswords.com').replace(/\/$/, ''),
+      timeoutMs: Number(env.BREACHED_PASSWORD_TIMEOUT_MS ?? 2000),
+    },
     playIntegrity: {
       mode: (env.PLAY_INTEGRITY_MODE ?? 'off') as AppConfig['playIntegrity']['mode'],
       serviceAccountJson: env.PLAY_INTEGRITY_SERVICE_ACCOUNT_B64
@@ -147,12 +166,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       staffLevel: (env.PLAY_INTEGRITY_STAFF_LEVEL ?? 'DEVICE') as IntegrityLevel,
     },
   };
+  config.piiEncryptionKeyPrevious = optionalKey32(env, 'PII_ENCRYPTION_KEY_PREVIOUS', config.piiEncryptionKey);
+  config.piiHashKeyPrevious = optionalKey32(env, 'PII_HASH_KEY_PREVIOUS', config.piiHashKey);
   if (!['turbo', 'mozjpeg'].includes(config.media.photoEncoder)) throw new Error('PHOTO_ENCODER must be turbo or mozjpeg');
   if (!['api', 'worker', 'all'].includes(config.processRole)) throw new Error('PROCESS_ROLE must be api, worker or all');
   if (config.mail.transport === 'smtp' && !config.mail.smtpUrl) throw new Error('SMTP_URL is required when MAIL_TRANSPORT=smtp');
   if (config.jwtAccessSecret === config.jwtMfaSecret) {
     throw new Error('JWT_ACCESS_SECRET and JWT_MFA_SECRET must differ');
   }
+  if (!['on', 'off', ''].includes(config.breachedPasswords.mode)) throw new Error('BREACHED_PASSWORD_CHECK must be on or off');
   const pi = config.playIntegrity;
   if (!['off', 'monitor', 'enforce'].includes(pi.mode)) throw new Error('PLAY_INTEGRITY_MODE must be off, monitor or enforce');
   for (const level of [pi.citizenLevel, pi.staffLevel]) {
@@ -170,6 +192,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (!config.grievanceOfficer.name || !config.grievanceOfficer.email) {
       throw new Error('GRIEVANCE_OFFICER_NAME and GRIEVANCE_OFFICER_EMAIL are required in production (DPDP privacy notice)');
     }
+    // A decision, not a default: on needs outbound HTTPS to the HIBP API through the state firewall.
+    if (!config.breachedPasswords.mode) throw new Error('BREACHED_PASSWORD_CHECK=on|off is required in production');
     // The apps have no CAPTCHA: Play Integrity is their bot and tamper check.
     if (pi.mode !== 'enforce') throw new Error('PLAY_INTEGRITY_MODE=enforce is required in production');
     if (pi.certSha256.length === 0) throw new Error('PLAY_INTEGRITY_CERT_SHA256 is required in production');

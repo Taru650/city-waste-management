@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthUser } from '../../common/auth-user';
 import { Client } from '../../common/client-info';
-import { CurrentUser, Public, Roles } from '../../common/decorators';
+import { AllowWithoutConsent, CurrentUser, Public, Roles } from '../../common/decorators';
 import { Role } from '../../common/enums';
 import { AuthThrottle } from '../../common/throttle';
 import { ClientInfo } from '../auth/session.service';
@@ -10,6 +10,7 @@ import { ConsentDto, CorrectProfileDto, ErasureDto } from './privacy.dto';
 import { PrivacyService } from './privacy.service';
 
 @ApiTags('privacy')
+@AllowWithoutConsent()
 @Controller('privacy')
 export class PrivacyController {
   constructor(private readonly privacy: PrivacyService) {}

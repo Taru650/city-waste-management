@@ -121,7 +121,7 @@ export class PrivacyService {
     let emailHash: string | undefined;
     if (dto.email) {
       emailHash = this.pii.blindIndex(dto.email);
-      const [taken] = await this.ds.query(`SELECT 1 FROM users WHERE email_hash = $1 AND id <> $2`, [emailHash, user.id]);
+      const [taken] = await this.ds.query(`SELECT 1 FROM users WHERE email_hash = ANY($1) AND id <> $2`, [this.pii.blindIndexes(dto.email), user.id]);
       if (taken) throw new ConflictException('This email is already used by another account');
       emailEnc = this.pii.encrypt(dto.email);
     }

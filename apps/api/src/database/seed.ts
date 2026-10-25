@@ -42,7 +42,7 @@ async function resetAdminMfa(config: ReturnType<typeof loadConfig>, mobile: stri
   const pii = new PiiCryptoService(config);
   const ds = await createDataSource(config.databaseUrl).initialize();
   await ds.transaction(async (m) => {
-    const [admin] = await m.query(`SELECT id FROM users WHERE mobile_hash = $1 AND role = 'WEB_ADMIN'`, [pii.blindIndex(mobile)]);
+    const [admin] = await m.query(`SELECT id FROM users WHERE mobile_hash = ANY($1) AND role = 'WEB_ADMIN'`, [pii.blindIndexes(mobile)]);
     if (!admin) throw new Error('No Web Admin with that mobile');
     await m.query(`UPDATE users SET mfa_enabled = false, mfa_secret_enc = NULL, mfa_last_step = NULL, token_version = token_version + 1 WHERE id = $1`, [admin.id]);
     await m.query(`DELETE FROM mfa_recovery_codes WHERE user_id = $1`, [admin.id]);

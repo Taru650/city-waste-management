@@ -156,6 +156,30 @@ void main() {
     expect(find.byKey(const Key('new-complaint')), findsOneWidget);
   });
 
+  testWidgets('a notice change mid-session: the API refuses with CONSENT_REQUIRED and the app asks for consent', (t) async {
+    final env = await TestEnv.create(signedIn: true);
+    var noticeChanged = false;
+    var consented = false;
+    env.backend.on('GET /auth/me', (_, _) => (200, meJson(consentRequired: noticeChanged && !consented)));
+    env.backend.on('GET /complaints', (_, _) => noticeChanged && !consented
+        ? (403, {'statusCode': 403, 'code': 'CONSENT_REQUIRED', 'message': 'Please read and accept the current privacy notice'})
+        : (200, {'total': 1, 'items': [complaintJson()]}));
+    env.backend.on('POST /privacy/consent', (_, _) {
+      consented = true;
+      return (200, {'version': '2026-10-25'});
+    });
+    await t.pumpWidget(env.app(const CitizenApp()));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('new-complaint')), findsOneWidget);
+    noticeChanged = true;
+    await t.drag(find.byType(Scrollable).first, const Offset(0, 400)); // pull to refresh
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('consent-required')), findsOneWidget);
+    await t.tap(find.byKey(const Key('consent-accept')));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('new-complaint')), findsOneWidget);
+  });
+
   testWidgets('profile: my data is shown; deleting the account needs the password, then signs out everywhere', (t) async {
     final env = await TestEnv.create(signedIn: true);
     env.backend.on('GET /privacy/my-data', (_, _) => (200, {'profile': {'name': 'Asha', 'mobile': '9876543210'}, 'complaints': []}));

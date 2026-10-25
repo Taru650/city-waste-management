@@ -34,6 +34,11 @@ class ApiClient {
   /// Fires when the session cannot be refreshed (user must sign in again).
   Stream<void> get onSessionExpired => _expired.stream;
 
+  final _consent = StreamController<void>.broadcast();
+
+  /// Fires when the API asks for consent to a changed privacy notice in the middle of a session.
+  Stream<void> get onConsentRequired => _consent.stream;
+
   Future<Tokens?>? _refreshing;
 
   Future<T> get<T>(String path, {Map<String, dynamic>? query}) => _send<T>('GET', path, query: query);
@@ -102,10 +107,15 @@ class ApiClient {
     final status = e.response?.statusCode ?? 0;
     if (status == 0) return ApiException(0, 'No internet connection');
     final body = e.response?.data;
-    return ApiException(status, ApiException.messageFrom(body, 'Request failed ($status)'), body: body);
+    final ex = ApiException(status, ApiException.messageFrom(body, 'Request failed ($status)'), body: body);
+    if (ex.isConsentRequired) _consent.add(null);
+    return ex;
   }
 
-  void dispose() => _expired.close();
+  void dispose() {
+    _expired.close();
+    _consent.close();
+  }
 }
 
 /// Rejects TLS connections whose leaf certificate public key is not in [pins]

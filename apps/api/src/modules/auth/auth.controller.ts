@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthUser } from '../../common/auth-user';
 import { Client } from '../../common/client-info';
-import { AllowPendingPasswordChange, CurrentUser, Public } from '../../common/decorators';
+import { AllowPendingPasswordChange, AllowWithoutConsent, CurrentUser, Public } from '../../common/decorators';
 import { AuthThrottle } from '../../common/throttle';
 import { AuthService } from './auth.service';
 import { CaptchaService } from './captcha.service';
@@ -18,6 +18,7 @@ import { ClientInfo, SessionService } from './session.service';
  * API with the same Bearer token.
  */
 @ApiTags('auth')
+@AllowWithoutConsent()
 @Controller('auth')
 export class AuthController {
   constructor(

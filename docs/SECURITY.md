@@ -141,11 +141,16 @@ secret scanning (gitleaks) and container scanning (Trivy).
 - DAST (ZAP, authenticated): NUL bytes caused 500s (global guard, 400 everywhere); push tokens accepted arbitrary characters; `/privacy` 500; no CSP on static assets. All fixed, confirmation scan in [`docs/ops/DAST.md`](ops/DAST.md).
 - Availability: the dashboard trend report took 31 s (30 days) / 328 s (1 year) on a year of one ULB's history, enough for officials to tie up database CPU by opening the dashboard. Rewritten: 0.6 s / 2.3 s, with an equivalence test against the old query.
 
+## Findings fixed in M10
+- **CI had been red on every push since M1** in two jobs, so the release APKs had never been built and the API image never scanned. The container-scan action (`aquasecurity/trivy-action`) no longer resolved: its tags were force-pushed to credential-stealing code in March 2026 (GHSA-69fq-xp46-6x23). Our job never executed it (it failed at resolution). Every action is now pinned to a commit SHA, trivy-action to the unaffected v0.35.0 with Trivy v0.69.3.
+- **API image:** the npm bundled with the Node base image carried every HIGH finding; package managers are removed from the runtime image (scan now clean).
+- **Deployment:** migrations and the first-admin seed only existed as ts-node scripts that the production image does not contain; compiled scripts and a compose `migrate` step now run them.
+
 ## Known gaps (tracked, must close before go-live)
 - ~~Email transport~~ — closed in M4 (SMTP, TLS required in production).
 - ~~MFA recovery~~ — closed in M4 (this was listed for M3 but slipped; recovery codes, manager reset and break-glass CLI now exist).
-- **Breached-password check:** still the small embedded deny-list. The HIBP k-anonymity check was listed for M3 and has not been done; it needs outbound access to api.pwnedpasswords.com from the API (M5).
-- **Key rotation:** PII key rotation (re-encrypt job) is not implemented yet (M5).
+- ~~Breached-password check~~ — closed in M10: HIBP k-anonymity range API (5 hex chars of the SHA-1 leave the server, padded responses) on registration, password change and reset; accepts on outage (logged), deny-list always on. **Tested against a local stand-in only**: the real service was not reachable from the build environment. Production must choose `BREACHED_PASSWORD_CHECK=on|off`.
+- ~~Key rotation~~ — closed in M10: previous keys are read while new ones are written, `rotate-pii-keys.js` moves every row (resumable, safe while running); MFA recovery codes must be regenerated after a hash-key change (their plaintext is not stored). Procedure in `docs/ops/INCIDENT_RESPONSE.md`.
 - **External pentest and CERT-In audit:** not done. The vendor's own ZAP run (M9) is not a substitute; the auditor must test staging, including authorisation and business logic, and the APKs.
 - ~~CAPTCHA in the apps~~ — closed in M8: the apps prove themselves with Play Integrity instead (see above). **Needs from you before go-live:** a Play Console app for each package, the linked Google Cloud project number (`PLAY_CLOUD_PROJECT_NUMBER` in the app builds), a service account with Play Integrity access (`PLAY_INTEGRITY_SERVICE_ACCOUNT_B64`) and the release certificate digests (`PLAY_INTEGRITY_CERT_SHA256`). Default quota is 10,000 decodes/day; device keys are re-attested only every 30 days to stay well inside it.
 - ~~Device attestation (Android)~~ — closed in M8. **iOS** still has no App Attest: with enforcement on, iOS keys are refused.
@@ -154,7 +159,7 @@ secret scanning (gitleaks) and container scanning (Trivy).
 - **Portal exposure:** the portal forwards `X-Forwarded-For` to the API; it must only be reachable through the TLS/WAF proxy, never directly.
 - **Map tiles:** the default OpenStreetMap tile server is for light use only (OSM tile usage policy). Production needs MapmyIndia/Bhuvan or self-hosted tiles via `MAP_TILE_URL`.
 - **Bucket policy:** the bucket must be private with no public-read policy; this is deployment configuration (compose sets it for MinIO) and is not covered by tests.
-- **Mobile builds not yet verified on a device:** the Kotlin native code now type-checks (`tool/kotlin_check.sh`, against Android framework classes, Flutter's embedding and compile-only stubs for Play Integrity / AndroidX), and CI builds signed release APKs and checks their merged permissions, but that CI job has not run yet (no PR) and nothing has run on a phone.
+- **Mobile builds not yet verified on a device:** release APKs build in CI since M10 (R8, merged permissions checked), but nothing has run on a phone.
 - **Root detection is a heuristic:** Magisk DenyList and similar tools hide root from app-side checks. Treat it as friction; Play Integrity on the server is the control.
 - **iOS:** no Secure Enclave signer yet; the iOS build would fail to register a device key. Android-first per the plan.
 - **Push notifications:** token registration is built (M8) but untested against a real Firebase project (files not committed); until one exists the apps fall back to polling the in-app inbox.
@@ -162,5 +167,5 @@ secret scanning (gitleaks) and container scanning (Trivy).
 - **Push token API:** the apps use FCM registration tokens, which firebase_messaging 17 deprecates in favour of Installation-ID direct send. Migrate client and server together once a real Firebase project is available to verify against.
 - **Privacy notice wording** is a working draft for the ULB/state legal team; it is not legal advice. Bump `NOTICE_VERSION` when it changes.
 - **Audit-log retention:** `audit_logs` is append-only and never pruned in the database; archiving entries older than the legal retention period to cold storage is an operations task.
-- **Server-side consent gate:** a citizen without consent to the current notice is stopped by the app (consent screen) but the API does not refuse their requests; the API exposes `consentRequired` for that.
+- ~~Server-side consent gate~~ — closed in M10: without consent to the current notice the API answers 403 `CONSENT_REQUIRED` to everything but account/session management, the privacy rights and device keys (checked in the same query as the session, no extra round trip); the app switches to the consent screen mid-session.
 - **API memory:** RSS grew ~0.8 MB/min during the 1-hour soak (433 → 473 MB). Not shown to be a leak; alert at 1 GB in the pilot and take a heap snapshot if it keeps growing.

@@ -74,6 +74,12 @@ export class UsersService {
       if (accessExpiresAt.getTime() - Date.now() > 366 * 86_400_000) throw new BadRequestException('Temporary access can last at most one year');
     }
 
+    // The unique index alone misses an account still indexed under the previous key during a key rotation.
+    const [taken] = await this.ds.query(`SELECT 1 FROM users WHERE mobile_hash = ANY($1) OR email_hash = ANY($2)`, [
+      this.pii.blindIndexes(dto.mobile), dto.email ? this.pii.blindIndexes(dto.email) : [],
+    ]);
+    if (taken) throw new ConflictException('Mobile number or email already registered');
+
     const tempPassword = generateTempPassword();
     const passwordHash = await argon2.hash(tempPassword, ARGON2_OPTIONS);
     const [row] = await this.ds

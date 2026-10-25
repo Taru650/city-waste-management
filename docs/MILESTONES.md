@@ -14,7 +14,7 @@ security) pass in CI. The next milestone does not start until then.
 | M7 | Flutter Citizen app and Staff app | ✅ Done (code + tests; not yet run on a phone, see below) |
 | M8 | Play Integrity, event zones + temporary staff, push in apps, load test (k6, 10× peak), APK build in CI | ✅ Done (phone tests carried to M9) |
 | M9 | DPDP flows, DAST + fixes, soak, backup/restore drill, pilot runbook and audit pack | ✅ Done (phones, accounts, external audit and pilot need the ULB/state) |
-| M10 | Pilot: phone tests, accounts, external pentest + CERT-In audit, go-live in one ULB | ⏭ Next (owner: ULB/state, vendor support) |
+| M10 | Pilot: phone tests, accounts, external pentest + CERT-In audit, go-live in one ULB | 🟡 Vendor part done (CI fully green, APKs built, go-live gaps closed); phones, accounts, audit and go-live need the ULB/state |
 
 ---
 
@@ -159,7 +159,7 @@ Shared code in `packages/flutter_core`; two apps, `apps/mobile_citizen` (Swachh 
 - Portal: 32 Playwright tests incl. event zone creation in the browser and temporary staff.
 
 **Still not done**
-- Nothing has run on a phone yet, and the CI APK job has not run (no PR). Low-end phone over 3G testing moves to M9.
+- Nothing has run on a phone yet. (The CI APK job was failing at setup until M10, see there.) Low-end phone over 3G testing moves to M9.
 - iOS: no App Attest, so iOS keys are refused when enforcing.
 
 ## M9 — Pilot readiness ✅ what can be done without phones, accounts and auditors
@@ -170,8 +170,42 @@ Shared code in `packages/flutter_core`; two apps, `apps/mobile_citizen` (Swachh 
 - **Pilot and audit material:** [`docs/ops/PILOT_RUNBOOK.md`](ops/PILOT_RUNBOOK.md) (accounts and keys, master data, deploy, phone smoke test, go-live metrics, rollback), [`docs/ops/INCIDENT_RESPONSE.md`](ops/INCIDENT_RESPONSE.md) (CERT-In 6-hour reporting, containment, key rotation), [`docs/ops/AUDIT_PACK.md`](ops/AUDIT_PACK.md) (scope, accounts, data flows, permission matrix, STRIDE, evidence).
 
 **Not done — needs people, devices or accounts the vendor does not have**
-- First run on real low-end phones over 3G (both APKs come from the CI `android` job, which has not run: no PR yet).
+- First run on real low-end phones over 3G (APKs: CI `android` job artifact, first built in M10).
 - Google Play Console, Play Integrity and Firebase projects, hCaptcha, SMTP, hosting, Grievance Officer (see the runbook's account table).
 - External pentest and the CERT-In-empanelled audit; MobSF on the release APKs.
 - Legal review of the privacy notice text.
 - The pilot itself.
+
+## M10 — Pilot (vendor part) 🟡
+**CI: green for the first time on every job.** The milestone gates (unit, integration, security,
+portal and mobile tests) did pass on GitHub at each milestone, but two jobs had failed since they were
+added, which was not reported until M10:
+- `container-scan` (since M1): `aquasecurity/trivy-action@0.28.0` no longer resolved. That action's tags
+  were hijacked in March 2026 (GHSA-69fq-xp46-6x23); our job never ran it. All actions now pinned to
+  commit SHAs. First scan of the API image found every HIGH in the npm bundled with the Node base
+  image; package managers removed from the runtime image → clean.
+- `android` (since M8): the third-party SDK setup action broke on the runner. Removed (the runner ships
+  the SDK). **First release APKs built**: R8, merged permissions verified (camera, location,
+  microphone, notifications; no storage/media; no backup; no cleartext). Universal APK 57.6 MB → ship
+  App Bundles.
+- CI now also runs when only shared mobile code (`packages/`) or `infra/` changes.
+
+**Go-live gaps closed (each with tests)**
+- Production deployment could not run migrations or create the first admin (ts-node scripts, absent
+  from the image): compiled scripts + compose `migrate` step, verified on a fresh database.
+- DPDP consent enforced by the API, not just the app: 403 `CONSENT_REQUIRED` except account, privacy
+  rights and device keys; the app switches to the consent screen mid-session (found and fixed an
+  unhandled error in pull-to-refresh on the way).
+- PII key rotation: dual-key read, resumable re-encryption job, procedure in the incident runbook;
+  end-to-end test signs in during and after rotation.
+- Breached-password check (HIBP k-anonymity) on registration, change and reset; production must
+  decide `on`/`off`. Tested against a local stand-in only.
+
+**Deliberately not done**
+- Portal multi-replica refresh lock: one portal replica serves a pilot ULB; a shared lock or API-side
+  reuse grace window can come with statewide scale.
+
+**Not done — needs the ULB/state**
+- Real phones over 3G, Play Console / Firebase / hCaptcha / SMTP / hosting accounts, Grievance Officer,
+  legal review of the notice, external pentest + CERT-In audit (incl. MobSF on the APKs), go-live.
+

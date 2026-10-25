@@ -9,6 +9,9 @@ class ApiException implements Exception {
   bool get isNetwork => status == 0;
   bool get isUnauthorized => status == 401;
 
+  /// The API refuses service until the citizen accepts the current privacy notice (DPDP).
+  bool get isConsentRequired => status == 403 && body is Map && (body as Map)['code'] == 'CONSENT_REQUIRED';
+
   @override
   String toString() => 'ApiException($status): $message';
 

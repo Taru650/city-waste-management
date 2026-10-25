@@ -57,7 +57,7 @@ describe('DPDP Act: notice, consent, access, correction, erasure, retention (M9)
     });
 
     it('a citizen without a recorded consent (older account, changed notice) is asked again', async () => {
-      const old = await createUser(ctx, Role.CITIZEN, j);
+      const old = await createUser(ctx, Role.CITIZEN, j, { consent: false });
       const token = await tokenFor(ctx, old);
       expect((await ctx.http().get(api('/auth/me')).set(bearer(token))).body.consentRequired).toBe(true);
       await ctx.http().post(api('/privacy/consent')).set(bearer(token)).send({ noticeVersion: 'old', language: 'en' }).expect(409);
@@ -66,6 +66,34 @@ describe('DPDP Act: notice, consent, access, correction, erasure, retention (M9)
       const staff = await tokenFor(ctx, await createUser(ctx, Role.WORKER, j));
       expect((await ctx.http().get(api('/auth/me')).set(bearer(staff))).body.consentRequired).toBe(false);
       await ctx.http().post(api('/privacy/consent')).set(bearer(staff)).send({ noticeVersion: NOTICE_VERSION, language: 'en' }).expect(403);
+    });
+  });
+
+  describe('server-side consent gate', () => {
+    it('without consent to the current notice a citizen can only manage the account and use the privacy rights', async () => {
+      const c = await createUser(ctx, Role.CITIZEN, j, { consent: false });
+      const token = await tokenFor(ctx, c);
+      const refused = await ctx.http().get(api('/complaints')).set(bearer(token)).expect(403);
+      expect(refused.body.code).toBe('CONSENT_REQUIRED');
+      await ctx.http().get(api('/notifications')).set(bearer(token)).expect(403);
+      await ctx.http().post(api('/media/upload-url')).set(bearer(token)).send({}).expect(403); // before validation: no processing at all
+      // Still reachable: who am I, sign-out paths, device keys, the notice, export, correction, erasure.
+      await ctx.http().get(api('/auth/me')).set(bearer(token)).expect(200);
+      await ctx.http().get(api('/devices')).set(bearer(token)).expect(200);
+      await ctx.http().delete(api('/notifications/push-tokens')).set(bearer(token)).send({ token: 'f'.repeat(40) }).expect(204);
+      await ctx.http().get(api('/privacy/my-data')).set(bearer(token)).expect(200);
+      await ctx.http().patch(api('/privacy/profile')).set(bearer(token)).send({ name: 'Asha Devi' }).expect(204);
+      await ctx.http().post(api('/privacy/consent')).set(bearer(token)).send({ noticeVersion: NOTICE_VERSION, language: 'en' }).expect(200);
+      await ctx.http().get(api('/complaints')).set(bearer(token)).expect(200); // same token, at once
+    });
+
+    it('applies mid-session (notice changed or consent withdrawn) and never to staff', async () => {
+      const c = await register();
+      await ctx.http().get(api('/complaints')).set(bearer(c.token)).expect(200);
+      await ctx.ds.query(`UPDATE consents SET withdrawn_at = now() WHERE user_id = $1`, [c.id]);
+      expect((await ctx.http().get(api('/complaints')).set(bearer(c.token)).expect(403)).body.code).toBe('CONSENT_REQUIRED');
+      const staff = await tokenFor(ctx, await createUser(ctx, Role.SUPERVISOR, j));
+      await ctx.http().get(api('/complaints')).set(bearer(staff)).expect(200);
     });
   });
 

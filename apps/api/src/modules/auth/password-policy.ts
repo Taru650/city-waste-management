@@ -1,8 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 
 /**
- * Small embedded deny-list of the most common passwords (incl. India-specific ones).
- * A full breached-password check (HIBP k-anonymity range API) can be layered on later.
+ * Small embedded deny-list of the most common passwords (incl. India-specific ones), always on.
+ * The full breached-password check is BreachedPasswordService (HIBP k-anonymity).
  */
 const COMMON = new Set([
   '12345678', '123456789', '1234567890', 'password', 'password1', 'password@123', 'password123',

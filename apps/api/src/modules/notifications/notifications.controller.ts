@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AuthUser } from '../../common/auth-user';
-import { CurrentUser } from '../../common/decorators';
+import { AllowWithoutConsent, CurrentUser } from '../../common/decorators';
 import { ListNotificationsQuery, PushTokenDto, RemovePushTokenDto } from './dto/notifications.dto';
 import { NotificationsService } from './notifications.service';
 
@@ -36,6 +36,7 @@ export class NotificationsController {
     await this.notifications.registerToken(user, dto);
   }
 
+  @AllowWithoutConsent() // sign-out
   @Delete('push-tokens') @HttpCode(204)
   async removeToken(@CurrentUser() user: AuthUser, @Body() dto: RemovePushTokenDto) {
     await this.notifications.removeToken(user, dto.token);

@@ -71,7 +71,7 @@ class _ConsentScreenState extends ConsumerState<ConsentScreen> {
                     setState(() => _busy = true);
                     try {
                       await ref.read(privacyRepoProvider).consent(notice.version, s.lang);
-                      await ref.read(sessionProvider.notifier).refreshMe();
+                      await ref.read(sessionProvider.notifier).consentGiven();
                     } on ApiException catch (e) {
                       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
                     } finally {

@@ -99,7 +99,10 @@ class _MyComplaints extends ConsumerWidget {
       onRefresh: () async {
         await outbox?.run();
         ref.invalidate(myComplaintsProvider);
-        await ref.read(myComplaintsProvider.future);
+        // The list shows errors itself; the screen may also be replaced meanwhile (consent required).
+        try {
+          await ref.read(myComplaintsProvider.future);
+        } catch (_) {}
       },
       child: ListView(children: [
         if (outbox != null) OutboxBanner(outbox),

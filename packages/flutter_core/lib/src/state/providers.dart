@@ -78,13 +78,20 @@ final localeProvider = NotifierProvider<LocaleNotifier, Locale>(LocaleNotifier.n
 /// The signed-in user (null = signed out). Registers the device key after sign-in.
 class SessionNotifier extends AsyncNotifier<Me?> {
   StreamSubscription<void>? _expiry;
+  StreamSubscription<void>? _consent;
 
   @override
   Future<Me?> build() async {
     final api = ref.watch(apiClientProvider);
     _expiry?.cancel();
     _expiry = api.onSessionExpired.listen((_) => state = const AsyncData(null));
-    ref.onDispose(() => _expiry?.cancel());
+    // A changed notice mid-session: reload, and the app shows the consent screen instead of an error.
+    _consent?.cancel();
+    _consent = api.onConsentRequired.listen((_) => refreshMe().catchError((_) {}));
+    ref.onDispose(() {
+      _expiry?.cancel();
+      _consent?.cancel();
+    });
     if (!await ref.read(authRepoProvider).hasSession()) return null;
     try {
       final me = await _load();
@@ -123,6 +130,12 @@ class SessionNotifier extends AsyncNotifier<Me?> {
   }
 
   Future<void> refreshMe() async => state = AsyncData(await _load());
+
+  /// After accepting the privacy notice: push registration was refused until now.
+  Future<void> consentGiven() async {
+    await refreshMe();
+    _startPush();
+  }
 
   /// After replacing a temporary password: the session is now fully usable.
   Future<void> passwordChanged() async {

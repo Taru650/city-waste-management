@@ -18,6 +18,7 @@ supervisors, workers), **State IT / NIC cell** (hosting, accounts), **vendor** (
 | MeitY-empanelled cloud or State Data Centre: managed PostgreSQL 16 + PostGIS with PITR, Redis, S3-compatible storage (versioning on), ClamAV | hosting | `DATABASE_URL`, `REDIS_URL`, `S3_*`, `CLAMAV_HOST` |
 | Grievance Officer named by the ULB (DPDP Act) | privacy notice | `GRIEVANCE_OFFICER_*` |
 | Map tiles allowed for production use (MapmyIndia / Bhuvan / self-hosted) | portal maps | `MAP_TILE_URL` |
+| Firewall decision: outbound HTTPS from the API to `api.pwnedpasswords.com` (breached passwords), `playintegrity.googleapis.com`, `oauth2.googleapis.com`, `fcm.googleapis.com` | password check, attestation, push | `BREACHED_PASSWORD_CHECK=on` or `off` (production refuses to start without a choice) |
 
 Generate fresh `JWT_ACCESS_SECRET`, `JWT_MFA_SECRET` (≥ 32 chars, different), `PII_ENCRYPTION_KEY`,
 `PII_HASH_KEY` (32 bytes base64) in the vault. **Back up `PII_ENCRYPTION_KEY` and `PII_HASH_KEY`
@@ -46,7 +47,10 @@ separately from database backups**: without them mobile numbers and emails canno
    `docker compose run --rm -e RESET_ADMIN_MFA_MOBILE=… migrate node dist/database/seed.js`.
 4. Web Admin → District Admin → Sub Admin (each with authenticator MFA); Sub Admin enters wards,
    areas, staff (temporary passwords handed over in person).
-5. Build the apps in CI with the production `--dart-define`s; publish to an internal testing track
+5. Build the apps in CI with the production `--dart-define`s **as App Bundles** (`flutter build appbundle`):
+   the universal APK CI builds for verification is 57.6 MB (all CPU architectures), too heavy for low-end
+   phones on 3G; Play serves each phone only its own architecture. Sideloaded test builds: `--split-per-abi`.
+   Publish to an internal testing track
    first (closed group: the ULB's staff + 20 volunteer citizens).
 6. Set `PLAY_INTEGRITY_MODE=monitor` for the first week of closed testing (verdicts recorded, nobody
    blocked; check how many phones fail), then `enforce` before public launch — production requires it.

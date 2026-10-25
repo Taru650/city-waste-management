@@ -1,7 +1,7 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { ApiProperty, ApiTags } from '@nestjs/swagger';
 import { IsIn } from 'class-validator';
-import { Public } from '../../common/decorators';
+import { AllowWithoutConsent, Public } from '../../common/decorators';
 import { AuthThrottle } from '../../common/throttle';
 import { AttestationPurpose, AttestationService } from './attestation.service';
 
@@ -11,6 +11,7 @@ class ChallengeDto {
 }
 
 @ApiTags('attestation')
+@AllowWithoutConsent()
 @Controller('attestation')
 export class AttestationController {
   constructor(private readonly attestation: AttestationService) {}
