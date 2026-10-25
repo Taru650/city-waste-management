@@ -8,6 +8,7 @@ Sub Admins (Nagar Nigam / Parishad / Panchayat) and District Admins get pendency
 - Plan: [`docs/PLAN.md`](docs/PLAN.md)
 - Milestones and status: [`docs/MILESTONES.md`](docs/MILESTONES.md)
 - Security controls → tests: [`docs/SECURITY.md`](docs/SECURITY.md)
+- **New machine → tests, running system, APK on a phone:** [`docs/LOCAL_SETUP.md`](docs/LOCAL_SETUP.md)
 
 ## Repository layout
 ```
