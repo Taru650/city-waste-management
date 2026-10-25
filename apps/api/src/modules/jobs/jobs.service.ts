@@ -43,6 +43,8 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly bootstrapHooks: (() => Promise<void>)[] = [];
   private readonly prefix = process.env.REDIS_PREFIX ?? 'cwm';
 
+  private readonly redisWaitMs = Number(process.env.JOBS_REDIS_WAIT_MS ?? 2_000);
+
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {
     // BullMQ requires maxRetriesPerRequest = null for blocking commands.
     this.connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null, lazyConnect: false });
@@ -66,8 +68,14 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     return q;
   }
 
+  /**
+   * Queues a job, giving up after a short wait. The Redis connection retries without limit (BullMQ
+   * needs that), so while Redis is down an unbounded add() never settles, and a request awaiting
+   * it hung after its database work had committed. The add itself stays queued in the client and
+   * goes through once Redis is back; callers treat the rejection as "will happen later".
+   */
   add(queue: QueueName, name: string, data: object, opts?: JobsOptions) {
-    return this.queue(queue).add(name, data, opts);
+    return withTimeout(this.queue(queue).add(name, data, opts), this.redisWaitMs, `Job queue unavailable (${queue}/${name})`);
   }
 
   /** Register a handler for `name` jobs on `queue`; started at application bootstrap. */
@@ -127,9 +135,10 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     }
   }
 
+  /** Readiness: answers within the wait limit even while Redis is unreachable. */
   async ping(): Promise<boolean> {
     try {
-      return (await this.connection.ping()) === 'PONG';
+      return (await withTimeout(this.connection.ping(), this.redisWaitMs, 'Redis ping timed out')) === 'PONG';
     } catch {
       return false;
     }
@@ -140,8 +149,21 @@ export class JobsService implements OnApplicationBootstrap, OnModuleDestroy {
     // unhandled "Connection is closed" after its listeners are gone (a stop seconds after a start,
     // e.g. during a rolling deploy). Let them finish connecting first, but never wait long for it.
     await Promise.all(this.workers.map((w) => Promise.race([w.waitUntilReady().catch(() => undefined), sleep(5_000, undefined, { ref: false })])));
-    await Promise.all(this.workers.map((w) => w.close()));
-    await Promise.all([...this.queues.values()].map((q) => q.close()));
-    await this.connection.quit().catch(() => this.connection.disconnect());
+    // Each step is bounded: while Redis is unreachable a plain close()/quit() waits for a reconnect that
+    // may never come, and the process never exited (stop timed out into a SIGKILL).
+    const bounded = (p: Promise<unknown>) => withTimeout(p, 3_000, 'close timed out').catch(() => undefined);
+    await Promise.all(this.workers.map((w) => bounded(w.close())));
+    await Promise.all([...this.queues.values()].map((q) => bounded(q.close())));
+    if (this.connection.status === 'ready') await bounded(this.connection.quit());
+    this.connection.disconnect();
   }
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+    timer.unref();
+  });
+  return Promise.race([p, limit]).finally(() => clearTimeout(timer));
 }

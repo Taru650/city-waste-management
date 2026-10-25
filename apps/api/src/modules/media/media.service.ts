@@ -77,13 +77,19 @@ export class MediaService implements OnModuleInit {
 
   onModuleInit() {
     this.jobs.process(QUEUES.VIDEO, 'transcode', (job) => this.processVideo(job), Number(process.env.MEDIA_VIDEO_CONCURRENCY ?? 1));
-    // Re-enqueue videos whose job was lost (e.g. Redis flushed). Job id = media id, so this is idempotent.
-    this.jobs.onWorkerStart(async () => {
-      const rows = await this.ds.query(
-        `SELECT id FROM complaint_media WHERE status = 'PROCESSING' AND kind = 'VIDEO' AND processed_at IS NULL AND confirmed_at < now() - interval '10 minutes'`,
-      );
-      for (const r of rows) await this.enqueue(r.id);
-    });
+    // Re-enqueue videos whose job was lost (Redis down at confirm time, or flushed). Job id = media id,
+    // so this is idempotent. At worker start and every 10 minutes.
+    this.jobs.onWorkerStart(async () => { await this.requeueStalledVideos(); });
+    this.jobs.process(QUEUES.MAINTENANCE, 'requeue-videos', () => this.requeueStalledVideos());
+    this.jobs.every(QUEUES.MAINTENANCE, 'requeue-videos', 600_000);
+  }
+
+  async requeueStalledVideos(): Promise<number> {
+    const rows = await this.ds.query(
+      `SELECT id FROM complaint_media WHERE status = 'PROCESSING' AND kind = 'VIDEO' AND processed_at IS NULL AND confirmed_at < now() - interval '10 minutes'`,
+    );
+    for (const r of rows) await this.enqueue(r.id);
+    return rows.length;
   }
 
   async createUpload(user: AuthUser, dto: CreateUploadDto) {
@@ -195,7 +201,8 @@ export class MediaService implements OnModuleInit {
     await this.ds.query(`UPDATE complaint_media SET scan_status = $2 WHERE id = $1`, [media.id, scan.status]);
 
     if (media.kind === MediaKind.VIDEO) {
-      await this.enqueue(media.id);
+      // The upload is accepted either way; a job that cannot be queued now is re-queued by the sweep.
+      await this.enqueue(media.id).catch((err) => this.logger.warn(`Video ${media.id} not queued yet: ${err}`));
       return this.ownerView(media.id);
     }
     const out = await this.processor.photo(data);

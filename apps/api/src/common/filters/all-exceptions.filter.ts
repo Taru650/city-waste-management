@@ -8,6 +8,8 @@ import { ThrottlerException } from '@nestjs/throttler';
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger('Unhandled');
+  /** Outages and limits are expected operating conditions, logged apart from bugs. */
+  private readonly deps = new Logger('Dependencies');
 
   catch(exception: unknown, host: ArgumentsHost) {
     const res = host.switchToHttp().getResponse();
@@ -20,10 +22,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return res.status(exception.getStatus()).json(typeof body === 'string' ? { statusCode: exception.getStatus(), message: body } : body);
     }
     const err = exception as { type?: string; status?: number; code?: string; message?: string };
-    // Database limits (data-source.ts): the client gets a clear, retryable answer, the log the details.
+    // Database limits (data-source.ts) and outages: the client gets a clear, retryable answer, the log the details.
     if (err?.code === '57014' || err?.code === '25P03' || /timeout exceeded when trying to connect/.test(err?.message ?? '')) {
-      this.logger.warn(`Database limit hit: ${err.code ?? ''} ${err.message ?? ''}`.trim());
+      this.deps.warn(`Database limit hit: ${err.code ?? ''} ${err.message ?? ''}`.trim());
       return res.status(503).json({ statusCode: 503, message: 'The server is busy or the request took too long. Please try again, or narrow the filters.' });
+    }
+    if (isConnectionFailure(err)) {
+      this.deps.error(`Dependency unavailable: ${err.code ?? ''} ${err.message ?? ''}`.trim());
+      return res.status(503).json({ statusCode: 503, message: 'The service is temporarily unavailable. Please try again shortly.' });
     }
     // body-parser errors (payload too large, malformed JSON) carry their own status.
     if (err?.type === 'entity.too.large') return res.status(413).json({ statusCode: 413, message: 'Payload too large' });
@@ -32,4 +38,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
     this.logger.error(exception instanceof Error ? exception.stack : String(exception));
     return res.status(500).json({ statusCode: 500, message: 'Internal server error' });
   }
+}
+
+const NETWORK_ERRORS = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN']);
+
+/** Database (or other backing service) unreachable, restarting or cut off: retryable, not a bug. */
+function isConnectionFailure(err: { code?: string; message?: string } | undefined): boolean {
+  if (!err) return false;
+  const code = err.code ?? '';
+  return NETWORK_ERRORS.has(code) || code.startsWith('08') || ['57P01', '57P02', '57P03'].includes(code)
+    || /^Connection terminated/.test(err.message ?? '');
 }
