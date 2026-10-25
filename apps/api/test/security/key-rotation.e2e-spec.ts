@@ -9,9 +9,10 @@ import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdictio
  */
 const b64 = (n: number) => Buffer.alloc(32, n).toString('base64');
 const KEYS = ['PII_ENCRYPTION_KEY', 'PII_HASH_KEY', 'PII_ENCRYPTION_KEY_PREVIOUS', 'PII_HASH_KEY_PREVIOUS'] as const;
+const SAVED = [...KEYS, 'PROCESS_ROLE'] as const;
 
 describe('PII key rotation (M10)', () => {
-  const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
+  const saved = Object.fromEntries(SAVED.map((k) => [k, process.env[k]]));
   const oldEnc = process.env.PII_ENCRYPTION_KEY!;
   const oldHash = process.env.PII_HASH_KEY!;
   const withKeys = async (keys: Partial<Record<(typeof KEYS)[number], string>>) => {
@@ -25,6 +26,9 @@ describe('PII key rotation (M10)', () => {
   const open: TestCtx[] = [];
 
   beforeAll(async () => {
+    // These short-lived apps need no job workers: closing one while a worker's Redis connection is
+    // still starting leaves a late, unhandled connection error that fails whichever test runs next.
+    process.env.PROCESS_ROLE = 'api';
     const ctx = await createTestApp(); // the current (soon "old") keys
     open.push(ctx);
     j = await createJurisdiction(ctx.ds);
@@ -38,7 +42,7 @@ describe('PII key rotation (M10)', () => {
     open.push(back);
     const r = await rotatePiiKeys(back.ds, back.pii);
     for (const c of open) await c.app.close();
-    for (const k of KEYS) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+    for (const k of SAVED) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
     expect(r.unreadable).toEqual([]);
   });
 

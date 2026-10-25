@@ -15,7 +15,7 @@ describe('Breached-password check (M10)', () => {
   let server: Server;
   let behaviour: 'ok' | 'down' | 'slow' = 'ok';
   const seen: { url: string; headers: IncomingHttpHeaders }[] = [];
-  const saved = { mode: process.env.BREACHED_PASSWORD_CHECK, url: process.env.BREACHED_PASSWORD_URL, t: process.env.BREACHED_PASSWORD_TIMEOUT_MS };
+  const saved = { mode: process.env.BREACHED_PASSWORD_CHECK, url: process.env.BREACHED_PASSWORD_URL, t: process.env.BREACHED_PASSWORD_TIMEOUT_MS, role: process.env.PROCESS_ROLE };
 
   beforeAll(async () => {
     server = createServer((req, res) => {
@@ -32,6 +32,7 @@ describe('Breached-password check (M10)', () => {
     });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     Object.assign(process.env, {
+      PROCESS_ROLE: 'api', // no job workers needed (see key-rotation.e2e-spec)
       BREACHED_PASSWORD_CHECK: 'on', BREACHED_PASSWORD_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, BREACHED_PASSWORD_TIMEOUT_MS: '300',
     });
     ctx = await createTestApp();
@@ -41,7 +42,7 @@ describe('Breached-password check (M10)', () => {
   afterAll(async () => {
     await ctx.app.close();
     server.close();
-    for (const [k, v] of [['BREACHED_PASSWORD_CHECK', saved.mode], ['BREACHED_PASSWORD_URL', saved.url], ['BREACHED_PASSWORD_TIMEOUT_MS', saved.t]] as const) {
+    for (const [k, v] of [['BREACHED_PASSWORD_CHECK', saved.mode], ['BREACHED_PASSWORD_URL', saved.url], ['BREACHED_PASSWORD_TIMEOUT_MS', saved.t], ['PROCESS_ROLE', saved.role]] as const) {
       if (v === undefined) delete process.env[k]; else process.env[k] = v;
     }
   });

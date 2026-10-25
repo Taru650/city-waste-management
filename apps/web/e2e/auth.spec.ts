@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { authenticator } from 'otplib';
-import { login, seed, sql } from './fixtures';
+import { login, seed, signOut, sql } from './fixtures';
 
 test.describe('Sign-in flows', () => {
   test('unauthenticated visitors are sent to login and returned afterwards', async ({ page }) => {
@@ -45,9 +45,7 @@ test.describe('Sign-in flows', () => {
     await page.getByPlaceholder('123456').fill(authenticator.generate(u.mfaSecret!));
     await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
     const codes = (await page.getByTestId('new-codes').innerText()).trim().split('\n');
-    await page.getByTestId('user-menu').hover();
-    await page.getByRole('menuitem', { name: 'Sign out' }).click();
-    await expect(page).toHaveURL(/\/login/);
+    await signOut(page);
 
     await page.getByLabel('Mobile number or email').fill(u.mobile);
     await page.getByLabel('Password').fill(u.password);
@@ -77,9 +75,7 @@ test.describe('Sign-in flows', () => {
 
   test('signing out ends the session', async ({ page, context }) => {
     await login(page, 'supervisorA');
-    await page.getByTestId('user-menu').hover();
-    await page.getByRole('menuitem', { name: 'Sign out' }).click();
-    await expect(page).toHaveURL(/\/login/);
+    await signOut(page);
     const names = (await context.cookies()).filter((c) => c.value).map((c) => c.name);
     expect(names).not.toContain('cwm_at');
     expect(names).not.toContain('cwm_rt');

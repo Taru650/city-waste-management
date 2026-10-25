@@ -46,3 +46,18 @@ export async function login(page: Page, key: string, opts: { next?: string; expe
   }
   await expect(page).toHaveURL(opts.expectPath ?? /\/dashboard/);
 }
+
+/**
+ * Signs out through the user menu. The menu opens on hover, which can be missed while a dialog is
+ * still animating closed or the header re-renders, so wait for dialogs to go and retry the hover.
+ */
+export async function signOut(page: Page) {
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const item = page.getByRole('menuitem', { name: 'Sign out' });
+  await expect(async () => {
+    await page.getByTestId('user-menu').hover();
+    await expect(item).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+  await item.click();
+  await expect(page).toHaveURL(/\/login/);
+}
