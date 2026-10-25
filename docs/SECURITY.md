@@ -13,7 +13,7 @@ secret scanning (gitleaks) and container scanning (Trivy).
 | No account enumeration | identical errors for unknown user / wrong password / locked; identical forgot-password reply; dummy hash verify for timing | `security/authentication` |
 | MFA for admins | TOTP mandatory for Web, District and Sub Admin; enrolment before any token; replay blocked | `auth.e2e` MFA block |
 | Short-lived access tokens | 15-min HS256 JWT, algorithm pinned, `typ` checked | `security/authentication` forged / alg=none / expired / wrong type |
-| Server-side revocation | `token_version` checked on every request; role read from DB, not token | `security/authentication` forged role, logout-all |
+| Server-side revocation | `token_version` and the token's session (`sid`) checked on every request: sign-out ends that session's access tokens at once, other devices stay signed in; role read from DB, not token | `security/authentication` forged role, sid, logout-all; `auth.e2e` logout |
 | Refresh token rotation | single use, stored as SHA-256, reuse revokes the family | `security/authentication` reuse test |
 | Password reset | 15-min single-use hashed token, newer link voids older, revokes all sessions | `auth.e2e` reset block |
 | Temporary passwords | forced change before any other API use | `auth.e2e`, `users.e2e` |
@@ -146,6 +146,14 @@ secret scanning (gitleaks) and container scanning (Trivy).
 - **API image:** the npm bundled with the Node base image carried every HIGH finding; package managers are removed from the runtime image (scan now clean).
 - **Deployment:** migrations and the first-admin seed only existed as ts-node scripts that the production image does not contain; compiled scripts and a compose `migrate` step now run them.
 
+## Findings fixed in the October 2026 audit
+Details, measurements and the failure drill: [`docs/ops/AUDIT-2026-10.md`](ops/AUDIT-2026-10.md).
+- **Sign-out did not end the session's access tokens** (ASVS V3.3.1): a copied access token worked for up to 15 minutes after logout. Tokens are now bound to their session.
+- **Portal redirect loop** for a browser holding a token the API rejects (disabled account, password changed elsewhere): fixed with a session-ended handover that refreshes once or signs out.
+- **Availability:** a 50,000-row Excel export could exhaust API memory (now streamed, one per user); no database timeouts (now bounded); a Redis outage hung complaint actions and shutdown (now bounded, 503 where appropriate).
+- **Routing integrity:** overlapping ward boundaries are refused; the GPS ward lookup is deterministic.
+- **Correction:** the intermittent portal sign-out test failure was a lost click (the menu moved under the pointer), not a session that survived sign-out as earlier reported.
+
 ## Known gaps (tracked, must close before go-live)
 - ~~Email transport~~ — closed in M4 (SMTP, TLS required in production).
 - ~~MFA recovery~~ — closed in M4 (this was listed for M3 but slipped; recovery codes, manager reset and break-glass CLI now exist).
@@ -168,4 +176,4 @@ secret scanning (gitleaks) and container scanning (Trivy).
 - **Privacy notice wording** is a working draft for the ULB/state legal team; it is not legal advice. Bump `NOTICE_VERSION` when it changes.
 - **Audit-log retention:** `audit_logs` is append-only and never pruned in the database; archiving entries older than the legal retention period to cold storage is an operations task.
 - ~~Server-side consent gate~~ — closed in M10: without consent to the current notice the API answers 403 `CONSENT_REQUIRED` to everything but account/session management, the privacy rights and device keys (checked in the same query as the session, no extra round trip); the app switches to the consent screen mid-session.
-- **API memory:** RSS grew ~0.8 MB/min during the 1-hour soak (433 → 473 MB). Not shown to be a leak; alert at 1 GB in the pilot and take a heap snapshot if it keeps growing.
+- **API memory:** RSS grew ~0.8 MB/min during the 1-hour soak (433 → 473 MB). Not shown to be a leak; alert at 1 GB in the pilot and take a heap snapshot if it keeps growing. Compose now caps the API at 1 GB with automatic restart, so a leak shows up as restarts: watch for them.

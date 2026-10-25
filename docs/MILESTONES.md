@@ -209,3 +209,10 @@ added, which was not reported until M10:
 - Real phones over 3G, Play Console / Firebase / hCaptcha / SMTP / hosting accounts, Grievance Officer,
   legal review of the notice, external pentest + CERT-In audit (incl. MobSF on the APKs), go-live.
 
+
+## Architecture audit, October 2026 ✅
+Findings, fixes and measurements: [`docs/ops/AUDIT-2026-10.md`](ops/AUDIT-2026-10.md). Three High
+(export memory, access tokens surviving sign-out, Redis outage hanging requests), five Medium and
+three Low, all fixed. Each fix has tests, and most were shown to fail before the fix (exceptions are
+listed in the audit). The intermittent portal sign-out failure
+is explained (a lost click, not a session that survived sign-out) and fixed.

@@ -27,7 +27,9 @@ separately from database backups**: without them mobile numbers and emails canno
 ## 2. Master data (ULB, 1–2 weeks)
 - LGD codes of the district and ULB (from lgdirectory.gov.in).
 - Ward boundaries as GeoJSON (one file per ward, WGS84). Check each on the portal map preview. Wards
-  without a boundary still work, but citizens must pick them by hand.
+  without a boundary still work, but citizens must pick them by hand. The portal refuses a boundary
+  that overlaps another ward of the ULB by more than 100 m²; boundaries loaded any other way must be
+  checked with `psql "$DATABASE_URL" -f infra/sql/check-ward-overlaps.sql` (it must return no rows).
 - Areas (groups of wards) and one supervisor per area.
 - Staff list: Sub Admin(s), supervisors, workers with mobile numbers; who needs temporary access.
 - Complaint types and SLA hours (defaults are seeded; adjust with the ULB).
@@ -52,7 +54,11 @@ separately from database backups**: without them mobile numbers and emails canno
    phones on 3G; Play serves each phone only its own architecture. Sideloaded test builds: `--split-per-abi`.
    Publish to an internal testing track
    first (closed group: the ULB's staff + 20 volunteer citizens).
-6. Set `PLAY_INTEGRITY_MODE=monitor` for the first week of closed testing (verdicts recorded, nobody
+6. Health: `/api/v1/health` (process up) and `/api/v1/health/ready` (database and Redis reachable;
+   answers 503 within ~2 s when either is down). Point the load balancer at `ready`. During a Redis
+   outage the API keeps serving; pushes and video processing catch up when it is back. Database
+   limits (`DB_*`) and the job-queue wait (`JOBS_REDIS_WAIT_MS`) have working defaults.
+7. Set `PLAY_INTEGRITY_MODE=monitor` for the first week of closed testing (verdicts recorded, nobody
    blocked; check how many phones fail), then `enforce` before public launch — production requires it.
 
 ## 4. Smoke test before opening (30 minutes, on real phones)
