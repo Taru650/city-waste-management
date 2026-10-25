@@ -3,7 +3,7 @@ import { COOKIES } from './lib/server/config';
 import { buildCsp } from './lib/server/csp';
 import { refreshSession, secondsLeft, setSessionCookies } from './lib/server/session';
 
-const PUBLIC = ['/login', '/forgot-password', '/reset-password'];
+const PUBLIC = ['/login', '/forgot-password', '/reset-password', '/privacy'];
 
 /**
  * Runs before every page render:

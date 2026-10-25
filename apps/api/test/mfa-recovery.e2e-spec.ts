@@ -59,7 +59,7 @@ describe('MFA recovery (M4)', () => {
   it('regenerating codes needs a current TOTP code and voids the old set', async () => {
     const { user, secret, codes } = await enrolledSubAdmin();
     const session = await login(ctx, user);
-    await ctx.http().post(api('/auth/mfa/recovery-codes')).set(bearer(session.accessToken)).send({ code: '000000' }).expect(401);
+    await ctx.http().post(api('/auth/mfa/recovery-codes')).set(bearer(session.accessToken)).send({ code: '000000' }).expect(400); // signed in: a typo must not look like an expired session
     await ctx.ds.query(`UPDATE users SET mfa_last_step = NULL WHERE id = $1`, [user.id]);
     const fresh = await ctx.http().post(api('/auth/mfa/recovery-codes')).set(bearer(session.accessToken))
       .send({ code: authenticator.generate(secret) }).expect(200);

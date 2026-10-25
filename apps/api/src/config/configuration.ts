@@ -43,6 +43,8 @@ export interface AppConfig {
   processRole: 'api' | 'worker' | 'all';
   mail: { transport: 'log' | 'smtp'; smtpUrl?: string; from: string };
   fcm: { serviceAccountJson?: string; apiBase: string };
+  /** DPDP Act: published in the privacy notice. */
+  grievanceOfficer: { name: string; email: string; phone: string };
   playIntegrity: {
     /** off: no checks (dev/test). monitor: verdicts recorded, never blocking. enforce: required (production). */
     mode: 'off' | 'monitor' | 'enforce';
@@ -127,6 +129,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       serviceAccountJson: env.FCM_SERVICE_ACCOUNT_B64 ? Buffer.from(env.FCM_SERVICE_ACCOUNT_B64, 'base64').toString('utf8') : undefined,
       apiBase: env.FCM_API_BASE ?? 'https://fcm.googleapis.com',
     },
+    grievanceOfficer: {
+      name: env.GRIEVANCE_OFFICER_NAME ?? '',
+      email: env.GRIEVANCE_OFFICER_EMAIL ?? '',
+      phone: env.GRIEVANCE_OFFICER_PHONE ?? '',
+    },
     playIntegrity: {
       mode: (env.PLAY_INTEGRITY_MODE ?? 'off') as AppConfig['playIntegrity']['mode'],
       serviceAccountJson: env.PLAY_INTEGRITY_SERVICE_ACCOUNT_B64
@@ -159,6 +166,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     if (config.mail.transport !== 'smtp') throw new Error('MAIL_TRANSPORT=smtp is required in production (password reset emails)');
     if (config.mail.smtpUrl && !/^smtps:\/\/|[?&]requireTLS=true/.test(config.mail.smtpUrl)) {
       throw new Error('SMTP_URL must use TLS in production (smtps:// or ?requireTLS=true)');
+    }
+    if (!config.grievanceOfficer.name || !config.grievanceOfficer.email) {
+      throw new Error('GRIEVANCE_OFFICER_NAME and GRIEVANCE_OFFICER_EMAIL are required in production (DPDP privacy notice)');
     }
     // The apps have no CAPTCHA: Play Integrity is their bot and tamper check.
     if (pi.mode !== 'enforce') throw new Error('PLAY_INTEGRITY_MODE=enforce is required in production');

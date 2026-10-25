@@ -8,6 +8,7 @@ import { MediaService } from '../media/media.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { templates } from '../notifications/templates';
 import { AttestationService } from '../attestation/attestation.service';
+import { PrivacyService } from '../privacy/privacy.service';
 import { ZonesService } from '../zones/zones.service';
 
 const OPEN = `('PENDING','ASSIGNED','WORK_IN_PROGRESS','REOPENED')`;
@@ -39,6 +40,7 @@ export class SlaService implements OnModuleInit {
     private readonly media: MediaService,
     private readonly attestation: AttestationService,
     private readonly zones: ZonesService,
+    private readonly privacy: PrivacyService,
   ) {}
 
   onModuleInit() {
@@ -52,6 +54,8 @@ export class SlaService implements OnModuleInit {
     this.jobs.every(QUEUES.MAINTENANCE, 'purge-attestation', 3_600_000);
     this.jobs.process(QUEUES.MAINTENANCE, 'zone-handover', () => this.zones.handover());
     this.jobs.every(QUEUES.MAINTENANCE, 'zone-handover', 300_000);
+    this.jobs.process(QUEUES.MAINTENANCE, 'privacy-purge', () => this.privacy.purge());
+    this.jobs.every(QUEUES.MAINTENANCE, 'privacy-purge', 86_400_000);
   }
 
   async sweep(): Promise<{ breached: number; escalated: number }> {

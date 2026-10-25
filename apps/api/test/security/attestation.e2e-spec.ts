@@ -1,3 +1,4 @@
+import { NOTICE_VERSION } from '../../src/modules/privacy/notice';
 import { generateKeyPairSync } from 'crypto';
 import { Role } from '../../src/common/enums';
 import { integrityNonce } from '../../src/modules/attestation/attestation.service';
@@ -45,7 +46,7 @@ describe('Play Integrity attestation (M8)', () => {
 
   const challenge = async (purpose: string) => (await ctx.http().post(api('/attestation/challenge')).send({ purpose }).expect(200)).body.challenge as string;
   const registration = (over: object = {}) => ({
-    homeWardId: j.wards[0].id, name: 'Asha Devi', mobile: uniqueMobile(), email: `a${Date.now()}${Math.random().toString(36).slice(2, 6)}@example.in`,
+    homeWardId: j.wards[0].id, consentNoticeVersion: NOTICE_VERSION, name: 'Asha Devi', mobile: uniqueMobile(), email: `a${Date.now()}${Math.random().toString(36).slice(2, 6)}@example.in`,
     password: PASSWORD, ...over,
   });
 
@@ -189,7 +190,7 @@ describe('Play Integrity attestation (M8)', () => {
         [bad.body.id]: 'FAILED', [noPlay.body.id]: 'UNVERIFIED',
       });
       await mon.http().post(api('/auth/register')).send({
-        homeWardId: j.wards[0].id, name: 'No Play', mobile: uniqueMobile(), email: `np${Date.now()}@example.in`, password: PASSWORD, attestationError: 'PLAY_SERVICES_NOT_FOUND',
+        homeWardId: j.wards[0].id, consentNoticeVersion: NOTICE_VERSION, name: 'No Play', mobile: uniqueMobile(), email: `np${Date.now()}@example.in`, password: PASSWORD, attestationError: 'PLAY_SERVICES_NOT_FOUND',
       }).expect(201);
     });
   });

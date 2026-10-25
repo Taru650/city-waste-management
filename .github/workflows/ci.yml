@@ -52,6 +52,11 @@ jobs:
         run: npx jest --runInBand --selectProjects e2e --testPathIgnorePatterns security
       - name: Security tests
         run: npm run test:security
+      - name: Backup and restore drill (on the data the tests left behind)
+        working-directory: .
+        run: |
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/cwm_test BACKUP_DIR="$RUNNER_TEMP/backups" bash infra/ops/backup.sh
+          ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres bash infra/ops/restore-drill.sh "$(ls "$RUNNER_TEMP"/backups/*.dump)"
       - name: Dependency audit (production deps, high+)
         run: npm run audit:prod
 

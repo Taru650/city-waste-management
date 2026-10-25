@@ -30,6 +30,14 @@ export class RegisterCitizenDto extends AttestationFields {
 
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(4096)
   captchaToken?: string;
+
+  @ApiProperty({ description: 'Version of the privacy notice the citizen accepted (GET /privacy/notice). DPDP: no account without consent.' })
+  @IsString() @MaxLength(20)
+  consentNoticeVersion: string;
+
+  @ApiPropertyOptional({ enum: ['hi', 'en'], default: 'hi', description: 'Language the notice was shown in' })
+  @IsOptional() @IsIn(['hi', 'en'])
+  consentLanguage?: 'hi' | 'en';
 }
 
 export class LoginDto {

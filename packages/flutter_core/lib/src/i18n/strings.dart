@@ -14,6 +14,21 @@ class S {
   }
 
   static const _en = <String, String>{
+    'privacyNotice': 'Privacy notice',
+    'consentAgree': 'I have read the privacy notice and agree to my data being used to handle my complaints',
+    'consentNeeded': 'Please read and accept the privacy notice to continue',
+    'consentUpdated': 'The privacy notice has changed. Please read and accept it to continue.',
+    'accept': 'I agree',
+    'grievanceOfficer': 'Grievance Officer',
+    'myData': 'My data',
+    'myDataHint': 'Everything the service holds about you. You can copy it.',
+    'copied': 'Copied',
+    'copy': 'Copy',
+    'editProfile': 'Correct my details',
+    'deleteAccount': 'Delete my account',
+    'deleteWarning': 'This cannot be undone. Your name, mobile number and email are erased now and you are signed out on every phone. Your complaints stay, without your name, as public records.',
+    'deleteConfirm': 'Delete permanently',
+    'accountDeleted': 'Your account has been deleted',
     'staffAppName': 'Swachh Seva Staff',
     'unsentOnSignOut': '{n} update(s) have not been sent yet. Signing out deletes them. Connect to the internet first to send them.',
     'assign': 'Assign',
@@ -125,6 +140,21 @@ class S {
   };
 
   static const _hi = <String, String>{
+    'privacyNotice': 'गोपनीयता सूचना',
+    'consentAgree': 'मैंने गोपनीयता सूचना पढ़ ली है और अपनी शिकायतों के निपटारे के लिए अपने डेटा के उपयोग से सहमत हूँ',
+    'consentNeeded': 'आगे बढ़ने के लिए गोपनीयता सूचना पढ़कर स्वीकार करें',
+    'consentUpdated': 'गोपनीयता सूचना बदल गई है। आगे बढ़ने के लिए इसे पढ़कर स्वीकार करें।',
+    'accept': 'मैं सहमत हूँ',
+    'grievanceOfficer': 'शिकायत अधिकारी',
+    'myData': 'मेरा डेटा',
+    'myDataHint': 'सेवा के पास आपके बारे में रखी पूरी जानकारी। आप इसे कॉपी कर सकते हैं।',
+    'copied': 'कॉपी हो गया',
+    'copy': 'कॉपी करें',
+    'editProfile': 'मेरा विवरण सुधारें',
+    'deleteAccount': 'मेरा खाता हटाएँ',
+    'deleteWarning': 'यह वापस नहीं होगा। आपका नाम, मोबाइल नंबर और ईमेल अभी मिटा दिए जाएँगे और हर फ़ोन से लॉग आउट हो जाएगा। आपकी शिकायतें आपके नाम के बिना सार्वजनिक रिकॉर्ड के रूप में रहेंगी।',
+    'deleteConfirm': 'स्थायी रूप से हटाएँ',
+    'accountDeleted': 'आपका खाता हटा दिया गया है',
     'staffAppName': 'स्वच्छ सेवा स्टाफ',
     'unsentOnSignOut': '{n} अपडेट अभी भेजे नहीं गए हैं। लॉग आउट करने पर ये मिट जाएँगे। पहले इंटरनेट से जुड़कर इन्हें भेजें।',
     'assign': 'सौंपें',

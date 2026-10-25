@@ -117,8 +117,73 @@ void main() {
     await reveal(t, find.byKey(const Key('register-submit')));
     await t.tap(find.byKey(const Key('register-submit')));
     await t.pumpAndSettle();
-    expect(env.backend.bodiesOf('POST /auth/register').single,
-        {'homeWardId': 'w2', 'name': 'Asha Devi', 'mobile': '9876543210', 'email': 'asha@example.in', 'password': 'Swachh#2026'});
+    expect(find.byKey(const Key('consent-error')), findsOneWidget);
+    expect(env.backend.bodiesOf('POST /auth/register'), isEmpty, reason: 'DPDP: no account without consent');
+
+    await reveal(t, find.byKey(const Key('open-notice')));
+    await t.tap(find.byKey(const Key('open-notice')));
+    await t.pumpAndSettle();
+    expect(find.text('What we collect'), findsOneWidget);
+    expect(find.textContaining('go@example.gov.in'), findsOneWidget);
+    await t.pageBack();
+    await t.pumpAndSettle();
+    await reveal(t, find.byKey(const Key('consent')));
+    await t.tap(find.byKey(const Key('consent')));
+    await reveal(t, find.byKey(const Key('register-submit')));
+    await t.tap(find.byKey(const Key('register-submit')));
+    await t.pumpAndSettle();
+    expect(env.backend.bodiesOf('POST /auth/register').single, {
+      'consentNoticeVersion': '2026-10-25', 'consentLanguage': 'en',
+      'homeWardId': 'w2', 'name': 'Asha Devi', 'mobile': '9876543210', 'email': 'asha@example.in', 'password': 'Swachh#2026',
+    });
+  });
+
+  testWidgets('a citizen who has not accepted the current notice must accept it before using the app', (t) async {
+    final env = await TestEnv.create(signedIn: true);
+    var consented = false;
+    env.backend.on('GET /auth/me', (_, _) => (200, meJson(consentRequired: !consented)));
+    env.backend.on('POST /privacy/consent', (_, body) {
+      consented = true;
+      return (200, {'version': (body as Map)['noticeVersion']});
+    });
+    await t.pumpWidget(env.app(const CitizenApp()));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('consent-required')), findsOneWidget);
+    expect(find.byKey(const Key('new-complaint')), findsNothing);
+    await t.tap(find.byKey(const Key('consent-accept')));
+    await t.pumpAndSettle();
+    expect(env.backend.bodiesOf('POST /privacy/consent').single, {'noticeVersion': '2026-10-25', 'language': 'en'});
+    expect(find.byKey(const Key('new-complaint')), findsOneWidget);
+  });
+
+  testWidgets('profile: my data is shown; deleting the account needs the password, then signs out everywhere', (t) async {
+    final env = await TestEnv.create(signedIn: true);
+    env.backend.on('GET /privacy/my-data', (_, _) => (200, {'profile': {'name': 'Asha', 'mobile': '9876543210'}, 'complaints': []}));
+    env.backend.on('POST /privacy/erasure', (_, body) => (body as Map)['password'] == 'Swachh#2026' ? (204, null) : (400, {'message': 'Password is incorrect'}));
+    await t.pumpWidget(env.app(const CitizenApp()));
+    await t.pumpAndSettle();
+    await t.tap(find.text('Profile'));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('open-my-data')));
+    await t.pumpAndSettle();
+    expect(find.textContaining('"mobile": "9876543210"'), findsOneWidget);
+    await t.pageBack();
+    await t.pumpAndSettle();
+
+    await reveal(t, find.byKey(const Key('delete-account')));
+    await t.tap(find.byKey(const Key('delete-account')));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('delete-warning')), findsOneWidget);
+    await t.enterText(find.byKey(const Key('delete-password')), 'wrong');
+    await t.tap(find.byKey(const Key('delete-confirm')));
+    await t.pumpAndSettle();
+    expect(find.text('Password is incorrect'), findsOneWidget);
+    await t.enterText(find.byKey(const Key('delete-password')), 'Swachh#2026');
+    await t.tap(find.byKey(const Key('delete-confirm')));
+    await t.pumpAndSettle();
+    expect(env.store.tokens, isNull);
+    expect(find.byKey(const Key('login-submit')), findsOneWidget);
+    expect(find.text('Your account has been deleted'), findsOneWidget);
   });
 
   group('reporting a problem', () {

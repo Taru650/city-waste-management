@@ -84,9 +84,14 @@ void main() {
   test('a citizen registers, the app key signs a real capture, and the server accepts it', () async {
     citizen = Install();
     final m = '93${(DateTime.now().millisecondsSinceEpoch % 100000000).toString().padLeft(8, '0')}';
+    // DPDP: the app shows the notice and sends the version the citizen accepted.
+    final notice = await PrivacyRepository(citizen.api).notice('hi');
+    expect(notice.sections, isNotEmpty);
     await citizen.auth.registerCitizen(
       homeWardId: fixtures['wards']['A2'], name: 'Contract Citizen', mobile: m, email: 'contract$m@example.in', password: 'Swachh#Mobile2026',
+      consentNoticeVersion: notice.version,
     );
+    expect((await citizen.auth.me()).consentRequired, isFalse);
     await citizen.registry.register();
     expect(citizen.integrity.nonces, hasLength(2), reason: 'Play Integrity for sign-up, then for the signing key (428 challenge)');
     final up = await citizen.uploader.uploadBytes(at(siteLat, siteLng), photo());
@@ -198,6 +203,26 @@ void main() {
     final good = Install.staff()..store.tokens = await weak.store.read();
     expect(await good.registry.register(), isNotEmpty);
     expect(good.integrity.nonces, hasLength(1), reason: 'attested once, through the 428 challenge');
+  });
+
+  test('DPDP: a citizen exports their data, corrects their name, and erases the account', () async {
+    final c = Install();
+    final privacy = PrivacyRepository(c.api);
+    final notice = await privacy.notice('en');
+    final m = '94${(DateTime.now().millisecondsSinceEpoch % 100000000).toString().padLeft(8, '0')}';
+    await c.auth.registerCitizen(
+      homeWardId: fixtures['wards']['A1'], name: 'Erase Me', mobile: m, email: 'erase$m@example.in', password: 'Swachh#Erase2026',
+      consentNoticeVersion: notice.version, consentLanguage: 'en',
+    );
+    final data = await privacy.myData();
+    expect((data['profile'] as Map)['mobile'], m);
+    expect((data['consents'] as List).single['noticeVersion'], notice.version);
+    await privacy.correct(name: 'Erase Me Please');
+    expect((await c.auth.me()).name, 'Erase Me Please');
+    await expectLater(privacy.erase('wrong-password-1'), throwsA(isA<ApiException>().having((e) => e.status, 'status', 400)));
+    expect(await c.store.read(), isNotNull, reason: 'a wrong password must not end the session');
+    await privacy.erase('Swachh#Erase2026');
+    await expectLater(Install().auth.login(m, 'Swachh#Erase2026'), throwsA(isA<ApiException>().having((e) => e.status, 'status', 401)));
   });
 
   test('administrators are sent to the web portal (MFA) and cannot use the mobile apps', () async {

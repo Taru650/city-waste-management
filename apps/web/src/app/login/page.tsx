@@ -57,7 +57,10 @@ function LoginFlow() {
             <Input.Password autoComplete="current-password" />
           </Form.Item>
           <Button type="primary" htmlType="submit" block loading={busy}>Sign in</Button>
-          <div style={{ marginTop: 12 }}><Link href="/forgot-password">Forgot password?</Link></div>
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between' }}>
+            <Link href="/forgot-password">Forgot password?</Link>
+            <Link href="/privacy">Privacy notice</Link>
+          </div>
         </Form>
       )}
 

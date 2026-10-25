@@ -1,3 +1,4 @@
+import { NOTICE_VERSION } from '../src/modules/privacy/notice';
 import { authenticator } from 'otplib';
 import { Role } from '../src/common/enums';
 import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, login, PASSWORD, TestCtx, uniqueMobile } from './helpers';
@@ -13,7 +14,7 @@ describe('Auth (M1)', () => {
   afterAll(() => ctx.app.close());
 
   const registration = (over: object = {}) => ({
-    homeWardId: j.wards[0].id,
+    homeWardId: j.wards[0].id, consentNoticeVersion: NOTICE_VERSION,
     name: 'रमेश Kumar',
     guardianName: 'Suresh Kumar',
     mobile: uniqueMobile(),

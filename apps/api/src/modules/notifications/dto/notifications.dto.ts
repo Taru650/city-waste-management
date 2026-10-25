@@ -1,9 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 
 export class PushTokenDto {
-  @ApiProperty({ description: 'FCM registration token of this app install' }) @IsString() @Length(20, 4096)
+  // FCM tokens are URL-safe base64 plus ':' (~160–250 chars). The cap keeps the unique index safe.
+  @ApiProperty({ description: 'FCM registration token of this app install' }) @IsString() @Length(20, 2048) @Matches(/^[A-Za-z0-9_:-]+$/)
   token: string;
 
   @ApiProperty({ enum: ['ANDROID', 'IOS'] }) @IsIn(['ANDROID', 'IOS'])
@@ -11,7 +12,7 @@ export class PushTokenDto {
 }
 
 export class RemovePushTokenDto {
-  @ApiProperty() @IsString() @Length(20, 4096)
+  @ApiProperty() @IsString() @Length(20, 2048) @Matches(/^[A-Za-z0-9_:-]+$/)
   token: string;
 }
 

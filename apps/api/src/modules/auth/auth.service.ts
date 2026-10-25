@@ -11,6 +11,8 @@ import { newOpaqueToken, sha256 } from '../../common/crypto/tokens';
 import { randomInt } from 'crypto';
 import { mutateReturning } from '../../common/db';
 import { AuditService } from '../audit/audit.service';
+import { NOTICE_VERSION } from '../privacy/notice';
+import { PrivacyService } from '../privacy/privacy.service';
 import { ChangePasswordDto, LoginDto, RegisterCitizenDto, ResetPasswordDto } from './dto/auth.dto';
 import { MAIL_SERVICE, MailService } from './mail.service';
 import { assertStrongPassword } from './password-policy';
@@ -71,6 +73,7 @@ export class AuthService {
     private readonly audit: AuditService,
     @Inject(MAIL_SERVICE) private readonly mail: MailService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly privacy: PrivacyService,
   ) {
     this.dummyHash = argon2.hash(newOpaqueToken(), ARGON2_OPTIONS);
   }
@@ -90,20 +93,29 @@ export class AuthService {
     // Registration has to say *something* on a clash; the generic wording plus rate limits limit enumeration.
     if (taken) throw new ConflictException('An account with this mobile number or email already exists');
 
+    const consent = { noticeVersion: dto.consentNoticeVersion, language: dto.consentLanguage ?? 'hi' } as const;
+    if (consent.noticeVersion !== NOTICE_VERSION) {
+      throw new ConflictException(`The privacy notice has changed (current version ${NOTICE_VERSION}); please read it again`);
+    }
     const passwordHash = await argon2.hash(dto.password, ARGON2_OPTIONS);
-    const [user] = await this.ds.query(
-      `INSERT INTO users (role, status, name, guardian_name, mobile_enc, mobile_hash, email_enc, email_hash,
-                          password_hash, home_district_id, home_ulb_id, home_ward_id)
-       VALUES ('CITIZEN', 'UNVERIFIED_MOBILE', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-       ON CONFLICT DO NOTHING
-       RETURNING id, role, token_version`,
-      [
-        dto.name, dto.guardianName ?? null, this.pii.encrypt(dto.mobile), mobileHash,
-        this.pii.encrypt(dto.email), emailHash, passwordHash, ward.district_id, ward.ulb_id, ward.id,
-      ],
-    );
-    if (!user) throw new ConflictException('An account with this mobile number or email already exists');
-    await this.audit.log({ actorId: user.id, action: 'CITIZEN_REGISTERED', entity: 'user', entityId: user.id, ip: client.ip });
+    // Account and consent record together: DPDP, no processing without recorded consent.
+    const user = await this.ds.transaction(async (m) => {
+      const [row] = await m.query(
+        `INSERT INTO users (role, status, name, guardian_name, mobile_enc, mobile_hash, email_enc, email_hash,
+                            password_hash, home_district_id, home_ulb_id, home_ward_id, preferred_language)
+         VALUES ('CITIZEN', 'UNVERIFIED_MOBILE', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         ON CONFLICT DO NOTHING
+         RETURNING id, role, token_version`,
+        [
+          dto.name, dto.guardianName ?? null, this.pii.encrypt(dto.mobile), mobileHash,
+          this.pii.encrypt(dto.email), emailHash, passwordHash, ward.district_id, ward.ulb_id, ward.id, consent.language,
+        ],
+      );
+      if (!row) throw new ConflictException('An account with this mobile number or email already exists');
+      await this.privacy.recordConsent(row.id, consent, m);
+      await this.audit.log({ actorId: row.id, action: 'CITIZEN_REGISTERED', entity: 'user', entityId: row.id, ip: client.ip }, m);
+      return row;
+    });
     return this.sessions.issue(user, client);
   }
 
@@ -184,7 +196,7 @@ export class AuthService {
   async regenerateRecoveryCodes(userId: string, code: string, client: ClientInfo) {
     const user = await this.findById(userId);
     if (!user?.mfa_enabled || !user.mfa_secret_enc) throw new BadRequestException('MFA is not enabled');
-    await this.checkTotp(user, code, client);
+    await this.checkTotp(user, code, client, true);
     const recoveryCodes = await this.replaceRecoveryCodes(user.id);
     await this.audit.log({ actorId: user.id, action: 'MFA_RECOVERY_CODES_REGENERATED', entity: 'user', entityId: user.id, ip: client.ip });
     return { recoveryCodes };
@@ -302,6 +314,8 @@ export class AuthService {
       districtId: u.district_id, ulbId: u.ulb_id, areaId: u.area_id,
       homeDistrictId: u.home_district_id, homeUlbId: u.home_ulb_id, homeWardId: u.home_ward_id,
       createdAt: u.created_at,
+      // DPDP: a citizen who has not accepted the current notice is asked again before continuing.
+      consentRequired: u.role === Role.CITIZEN ? !(await this.privacy.consentCurrent(u.id)) : false,
     };
   }
 
@@ -331,15 +345,20 @@ export class AuthService {
   }
 
   /** TOTP check with ±1 step window, replay protection, and lockout on repeated failures. */
-  private async checkTotp(user: UserRow, code: string, client: ClientInfo) {
-    if (user.locked) throw this.invalidCredentials();
+  /**
+   * `signedIn`: the caller already has a valid session (e.g. regenerating recovery codes). A wrong
+   * code is then 400, not 401: clients (portal, apps) treat 401 as an expired session and would
+   * sign the user out for a typo.
+   */
+  private async checkTotp(user: UserRow, code: string, client: ClientInfo, signedIn = false) {
+    if (user.locked) throw signedIn ? new BadRequestException('Too many failed attempts; try again later') : this.invalidCredentials();
     const secret = this.pii.decrypt(user.mfa_secret_enc!);
     authenticator.options = { window: 1 };
     const delta = authenticator.checkDelta(code, secret);
     const step = delta === null ? null : Math.floor(Date.now() / 30000) + delta;
     if (step === null || (user.mfa_last_step !== null && step <= Number(user.mfa_last_step))) {
       await this.recordFailure(user, client);
-      throw new UnauthorizedException('Invalid code');
+      throw signedIn ? new BadRequestException('Invalid code') : new UnauthorizedException('Invalid code');
     }
     await this.ds.query(`UPDATE users SET mfa_last_step = $2 WHERE id = $1`, [user.id, step]);
   }

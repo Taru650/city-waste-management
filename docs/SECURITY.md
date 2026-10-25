@@ -111,6 +111,17 @@ secret scanning (gitleaks) and container scanning (Trivy).
 | Nothing stranded with temporary accounts | when a zone ends or is cancelled, open complaints go back to area supervisors (timeline + notification); zone supervisor must hold access past the zone end | `zones.e2e` handover |
 | Temporary staff | `access_expires_at` stops login, open sessions (guard) and refresh at once; hidden from assignment; ≤ 1 year, supervisors/workers only | `zones.e2e` temporary staff, Playwright |
 
+## Privacy (DPDP Act 2023)
+| Control | Implementation | Test |
+|---|---|---|
+| Notice | versioned Hindi/English notice (purpose, data, recipients, retention, rights, Grievance Officer, Data Protection Board); public on the portal and in the app; production refuses to start without a Grievance Officer | `privacy.e2e` notice, Playwright privacy |
+| Consent | no account without consent to the current notice version; recorded with version + language in the same transaction as the account; a changed notice asks again before the app can be used | `privacy.e2e` consent, citizen widget tests, contract test |
+| Access | `GET /privacy/my-data`: profile, consents, own complaints with history/feedback/own media metadata, devices, notifications — nothing about anyone else; audited | `privacy.e2e` export |
+| Correction | name, father/husband name, email (uniqueness enforced); mobile is the identity | `privacy.e2e` correction |
+| Erasure / withdrawal | password-confirmed; contact details, name, notifications, push tokens, reset tokens and feedback remarks removed at once, every session and device key revoked; complaints stay anonymous; same mobile can re-register; staff accounts are closed by admins | `privacy.e2e` erasure, contract test |
+| Integrity vs. erasure | feedback remains append-only except clearing the remark (database trigger) | `privacy.e2e` |
+| Retention | daily job: read notifications after 180 days (unread 360), spent session tokens after 30 days; unattached media after 24 h; security logs kept ≥ 180 days (CERT-In) | `privacy.e2e` retention |
+
 ## Input and transport (OWASP A03, A05, API4)
 | Control | Implementation | Test |
 |---|---|---|
@@ -123,12 +134,19 @@ secret scanning (gitleaks) and container scanning (Trivy).
 | API docs | Swagger disabled in production | `security/transport-headers` |
 | Container | non-root user, read-only FS, all capabilities dropped, DB bound to localhost | `infra/docker-compose.yml`, Trivy in CI |
 
+## Findings fixed in M9 (internal testing)
+- A wrong authenticator code while signed in (regenerating recovery codes) returned 401, which the portal treats as an expired session: admins were thrown back to the login page for a typo. Now 400 (Playwright test).
+- The portal's forgot-password page sent no CAPTCHA token although production requires one: staff self-service reset would have failed. hCaptcha widget added (CSP opened only for hCaptcha, only when configured; unit-tested). **Not tested against the real hCaptcha service.**
+- The restore procedure was untested; `infra/ops/restore-drill.sh` now proves restores (also in CI).
+- DAST (ZAP, authenticated): NUL bytes caused 500s (global guard, 400 everywhere); push tokens accepted arbitrary characters; `/privacy` 500; no CSP on static assets. All fixed, confirmation scan in [`docs/ops/DAST.md`](ops/DAST.md).
+- Availability: the dashboard trend report took 31 s (30 days) / 328 s (1 year) on a year of one ULB's history, enough for officials to tie up database CPU by opening the dashboard. Rewritten: 0.6 s / 2.3 s, with an equivalence test against the old query.
+
 ## Known gaps (tracked, must close before go-live)
 - ~~Email transport~~ — closed in M4 (SMTP, TLS required in production).
 - ~~MFA recovery~~ — closed in M4 (this was listed for M3 but slipped; recovery codes, manager reset and break-glass CLI now exist).
 - **Breached-password check:** still the small embedded deny-list. The HIBP k-anonymity check was listed for M3 and has not been done; it needs outbound access to api.pwnedpasswords.com from the API (M5).
 - **Key rotation:** PII key rotation (re-encrypt job) is not implemented yet (M5).
-- **DAST and pentest:** OWASP ZAP, MobSF, external pentest and CERT-In audit are scheduled in M9.
+- **External pentest and CERT-In audit:** not done. The vendor's own ZAP run (M9) is not a substitute; the auditor must test staging, including authorisation and business logic, and the APKs.
 - ~~CAPTCHA in the apps~~ — closed in M8: the apps prove themselves with Play Integrity instead (see above). **Needs from you before go-live:** a Play Console app for each package, the linked Google Cloud project number (`PLAY_CLOUD_PROJECT_NUMBER` in the app builds), a service account with Play Integrity access (`PLAY_INTEGRITY_SERVICE_ACCOUNT_B64`) and the release certificate digests (`PLAY_INTEGRITY_CERT_SHA256`). Default quota is 10,000 decodes/day; device keys are re-attested only every 30 days to stay well inside it.
 - ~~Device attestation (Android)~~ — closed in M8. **iOS** still has no App Attest: with enforcement on, iOS keys are refused.
 - **Portal styles:** `style-src` allows `'unsafe-inline'` (antd injects CSS at runtime; Leaflet sets style attributes). Script injection remains blocked by the nonce CSP.
@@ -139,6 +157,10 @@ secret scanning (gitleaks) and container scanning (Trivy).
 - **Mobile builds not yet verified on a device:** the Kotlin native code now type-checks (`tool/kotlin_check.sh`, against Android framework classes, Flutter's embedding and compile-only stubs for Play Integrity / AndroidX), and CI builds signed release APKs and checks their merged permissions, but that CI job has not run yet (no PR) and nothing has run on a phone.
 - **Root detection is a heuristic:** Magisk DenyList and similar tools hide root from app-side checks. Treat it as friction; Play Integrity on the server is the control.
 - **iOS:** no Secure Enclave signer yet; the iOS build would fail to register a device key. Android-first per the plan.
-- **Push notifications:** the apps poll the in-app inbox; FCM needs the Firebase project files (not committed) and token registration in the apps.
-- **MobSF / dynamic testing of the APKs:** scheduled with M9; needs a built APK first.
+- **Push notifications:** token registration is built (M8) but untested against a real Firebase project (files not committed); until one exists the apps fall back to polling the in-app inbox.
+- **MobSF / dynamic testing of the APKs:** not done; needs the release APKs from the CI job, which has not run yet. Part of the external audit.
 - **Push token API:** the apps use FCM registration tokens, which firebase_messaging 17 deprecates in favour of Installation-ID direct send. Migrate client and server together once a real Firebase project is available to verify against.
+- **Privacy notice wording** is a working draft for the ULB/state legal team; it is not legal advice. Bump `NOTICE_VERSION` when it changes.
+- **Audit-log retention:** `audit_logs` is append-only and never pruned in the database; archiving entries older than the legal retention period to cold storage is an operations task.
+- **Server-side consent gate:** a citizen without consent to the current notice is stopped by the app (consent screen) but the API does not refuse their requests; the API exposes `consentRequired` for that.
+- **API memory:** RSS grew ~0.8 MB/min during the 1-hour soak (433 → 473 MB). Not shown to be a leak; alert at 1 GB in the pilot and take a heap snapshot if it keeps growing.

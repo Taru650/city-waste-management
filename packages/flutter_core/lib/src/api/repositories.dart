@@ -25,10 +25,12 @@ class AuthRepository {
 
   Future<void> registerCitizen({
     required String homeWardId, required String name, String? guardianName, required String mobile, required String email, required String password,
+    required String consentNoticeVersion, String consentLanguage = 'hi',
   }) async {
     final proof = await _proof('register');
     final r = await api.postPublic<Map<String, dynamic>>('/auth/register', {
       ...proof,
+      'consentNoticeVersion': consentNoticeVersion, 'consentLanguage': consentLanguage,
       'homeWardId': homeWardId, 'name': name, if (guardianName != null && guardianName.isNotEmpty) 'guardianName': guardianName,
       'mobile': mobile, 'email': email, 'password': password,
     });
@@ -157,4 +159,19 @@ class StaffRepository {
   StaffRepository(this.api);
   final ApiClient api;
   Future<List<Worker>> workers() async => (await api.get<List<dynamic>>('/users/workers')).map((e) => Worker.fromJson(e as Map<String, dynamic>)).toList();
+}
+
+
+/// DPDP Act rights for citizens: notice, consent, access (export), correction, erasure.
+class PrivacyRepository {
+  PrivacyRepository(this.api);
+  final ApiClient api;
+
+  Future<PrivacyNotice> notice(String lang) async => PrivacyNotice.fromJson(await api.getPublic<Map<String, dynamic>>('/privacy/notice'), lang);
+  Future<void> consent(String version, String lang) => api.post('/privacy/consent', {'noticeVersion': version, 'language': lang});
+  Future<Map<String, dynamic>> myData() => api.get<Map<String, dynamic>>('/privacy/my-data');
+  Future<void> correct({String? name, String? email}) => api.patch('/privacy/profile', {'name': ?name, 'email': ?email});
+
+  /// Irreversible. The server ends every session; the caller then clears local state.
+  Future<void> erase(String password) => api.post('/privacy/erasure', {'password': password});
 }

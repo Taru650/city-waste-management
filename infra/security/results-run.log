@@ -1,0 +1,25 @@
+e2e environment ready
+Job replacer started
+Job replacer finished, time taken: 00:00:00
+Job openapi started
+Job openapi finished, time taken: 00:00:00
+Job spider started
+Job spider finished, time taken: 00:00:01
+Job spider started
+Job spider finished, time taken: 00:00:01
+Job passiveScan-wait started
+Job passiveScan-wait finished, time taken: 00:00:07
+Job activeScan started
+Job activeScan finished, time taken: 00:01:54
+Job activeScan started
+Job activeScan finished, time taken: 00:00:28
+Job report started
+Job report finished, time taken: 00:00:00
+Job report started
+Job report finished, time taken: 00:00:00
+alerts by risk: {"Medium":2,"Informational":4}
+ - Medium (High) | CSP: style-src unsafe-inline | 21 instance(s)
+ - Medium (High) | Content Security Policy (CSP) Header Not Set | 1 instance(s)
+API requests from the scan: 45778 | distinct endpoints: 5147
+by status: {"200":680,"202":849,"204":323,"400":35912,"401":757,"403":6021,"404":1234,"500":2}
+5xx: DELETE /api/v1/notifications/push-tokens; POST /api/v1/notifications/push-tokens

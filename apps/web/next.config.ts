@@ -15,7 +15,15 @@ const config: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   async headers() {
-    return [{ source: '/:path*', headers: securityHeaders }];
+    return [
+      { source: '/:path*', headers: securityHeaders },
+      // Static assets bypass the proxy (no per-request CSP). CSP does not affect how a script file
+      // runs inside a page, but a locked-down policy keeps any asset opened directly inert.
+      // Only here: a second CSP on pages would be intersected with the nonce policy.
+      ...['/_next/static', '/_next/static/:path*'].map((source) => ({
+        source, headers: [{ key: 'Content-Security-Policy', value: "default-src 'none'; frame-ancestors 'none'" }],
+      })),
+    ];
   },
 };
 

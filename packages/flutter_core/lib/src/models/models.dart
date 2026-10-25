@@ -15,7 +15,7 @@ Role roleFrom(String s) => switch (s) {
     };
 
 class Me {
-  Me({required this.id, required this.role, required this.name, required this.mobile, this.email, this.preferredLanguage = 'hi', this.mustChangePassword = false, this.ulbId});
+  Me({required this.id, required this.role, required this.name, required this.mobile, this.email, this.preferredLanguage = 'hi', this.mustChangePassword = false, this.ulbId, this.guardianName, this.consentRequired = false});
 
   final String id;
   final Role role;
@@ -25,6 +25,10 @@ class Me {
   final String preferredLanguage;
   final bool mustChangePassword;
   final String? ulbId;
+  final String? guardianName;
+
+  /// DPDP: the citizen has not accepted the current privacy notice yet (older account or new notice).
+  final bool consentRequired;
 
   factory Me.fromJson(Map<String, dynamic> j) => Me(
         id: j['id'] as String,
@@ -35,6 +39,8 @@ class Me {
         preferredLanguage: (j['preferredLanguage'] as String?) ?? 'hi',
         mustChangePassword: j['mustChangePassword'] == true,
         ulbId: j['ulbId'] as String?,
+        guardianName: j['guardianName'] as String?,
+        consentRequired: j['consentRequired'] == true,
       );
 }
 
@@ -205,4 +211,25 @@ class Paged<T> {
   Paged(this.items, this.total);
   final List<T> items;
   final int total;
+}
+
+
+/// The privacy notice (DPDP Act) in one language.
+class PrivacyNotice {
+  PrivacyNotice({required this.version, required this.title, required this.sections, required this.officer});
+  final String version;
+  final String title;
+  final List<(String, String)> sections;
+  final ({String name, String email, String phone}) officer;
+
+  factory PrivacyNotice.fromJson(Map<String, dynamic> j, String lang) {
+    final body = (j[lang == 'en' ? 'en' : 'hi'] as Map).cast<String, dynamic>();
+    final o = (j['grievanceOfficer'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return PrivacyNotice(
+      version: j['version'] as String,
+      title: body['title'] as String,
+      sections: [for (final s in body['sections'] as List) ((s as Map)['heading'] as String, s['body'] as String)],
+      officer: (name: (o['name'] as String?) ?? '', email: (o['email'] as String?) ?? '', phone: (o['phone'] as String?) ?? ''),
+    );
+  }
 }

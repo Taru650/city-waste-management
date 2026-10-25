@@ -40,8 +40,11 @@ describe('Reports (M5/M6)', () => {
         o.status, o.supervisorId ?? null, ist(o.filed), o.resolved ? ist(o.resolved) : null, o.closed ? ist(o.closed) : null,
       ],
     );
+    let prev: string | null = null;
     for (const [action, to, at] of o.events) {
-      await ctx.ds.query(`INSERT INTO complaint_events (complaint_id, action, to_status, created_at) VALUES ($1, $2, $3, $4)`, [row.id, action, to, ist(at!)]);
+      // from_status chained from the previous event, as the state machine writes it (the trend report relies on it).
+      await ctx.ds.query(`INSERT INTO complaint_events (complaint_id, action, from_status, to_status, created_at) VALUES ($1, $2, $3, $4, $5)`, [row.id, action, prev, to, ist(at!)]);
+      prev = to;
     }
     if (o.rating) await ctx.ds.query(`INSERT INTO feedback (complaint_id, citizen_id, rating) VALUES ($1, $2, $3)`, [row.id, citizen.id, o.rating]);
     ids[key] = row.id;

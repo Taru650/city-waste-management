@@ -1,3 +1,4 @@
+import { NOTICE_VERSION } from '../../src/modules/privacy/notice';
 import { Role } from '../../src/common/enums';
 import { api, bearer, createJurisdiction, createTestApp, createUser, Jurisdiction, quickMedia, TestCtx, TestUser, tokenFor } from '../helpers';
 
@@ -113,7 +114,7 @@ describe('Security: authorisation and jurisdiction isolation', () => {
   describe('mass assignment', () => {
     it('registration cannot choose a role or status', async () => {
       const res = await ctx.http().post(api('/auth/register')).send({
-        homeWardId: j.wards[0].id, name: 'Evil User', mobile: '7000000001', email: 'evil@example.in', password: 'Swachh#2026city',
+        homeWardId: j.wards[0].id, consentNoticeVersion: NOTICE_VERSION, name: 'Evil User', mobile: '7000000001', email: 'evil@example.in', password: 'Swachh#2026city',
         role: 'WEB_ADMIN', status: 'ACTIVE',
       });
       expect(res.status).toBe(400);

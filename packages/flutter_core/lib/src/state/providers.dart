@@ -42,6 +42,7 @@ final authRepoProvider = Provider((ref) => AuthRepository(ref.watch(apiClientPro
 final mastersRepoProvider = Provider((ref) => MastersRepository(ref.watch(apiClientProvider)));
 final complaintsRepoProvider = Provider((ref) => ComplaintsRepository(ref.watch(apiClientProvider)));
 final notificationsRepoProvider = Provider((ref) => NotificationsRepository(ref.watch(apiClientProvider)));
+final privacyRepoProvider = Provider((ref) => PrivacyRepository(ref.watch(apiClientProvider)));
 final staffRepoProvider = Provider((ref) => StaffRepository(ref.watch(apiClientProvider)));
 final deviceRegistryProvider = Provider((ref) => DeviceRegistry(ref.watch(apiClientProvider), ref.watch(signerProvider),
     platform: Platform.isIOS ? 'IOS' : 'ANDROID', attestor: ref.watch(attestorProvider)));
@@ -137,6 +138,16 @@ class SessionNotifier extends AsyncNotifier<Me?> {
   }
 
   static bool _capturesMedia(Me me) => const {Role.citizen, Role.worker, Role.supervisor, Role.subAdmin}.contains(me.role);
+
+  /// After account erasure: the server already revoked everything; forget it all locally.
+  Future<void> erased() async {
+    try {
+      await (await ref.read(outboxProvider.future)).clear();
+    } catch (_) {}
+    await ref.read(tokenStoreProvider).clear();
+    await ref.read(deviceRegistryProvider).forget();
+    state = const AsyncData(null);
+  }
 
   Future<void> logout() async {
     try {

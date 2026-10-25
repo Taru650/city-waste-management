@@ -34,7 +34,9 @@ describe('loadConfig', () => {
     expect(() => loadConfig(prod)).toThrow(/CLAMAV_HOST/);
     expect(() => loadConfig({ ...prod, CLAMAV_HOST: 'clamav' })).toThrow(/MAIL_TRANSPORT=smtp/);
     expect(() => loadConfig({ ...prod, CLAMAV_HOST: 'clamav', MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtp://mail:25' })).toThrow(/TLS/);
-    const mailed = { ...prod, CLAMAV_HOST: 'clamav', MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtps://u:p@mail:465' };
+    const smtp = { ...prod, CLAMAV_HOST: 'clamav', MAIL_TRANSPORT: 'smtp', SMTP_URL: 'smtps://u:p@mail:465' };
+    expect(() => loadConfig(smtp)).toThrow(/GRIEVANCE_OFFICER/);
+    const mailed = { ...smtp, GRIEVANCE_OFFICER_NAME: 'GO', GRIEVANCE_OFFICER_EMAIL: 'go@example.gov.in' };
     expect(() => loadConfig(mailed)).toThrow(/PLAY_INTEGRITY_MODE=enforce/);
     const sa = Buffer.from('{"project_id":"p","client_email":"e","private_key":"k"}').toString('base64');
     const attested = { ...mailed, PLAY_INTEGRITY_MODE: 'enforce', PLAY_INTEGRITY_SERVICE_ACCOUNT_B64: sa };

@@ -40,7 +40,8 @@ export const options = {
     // VUs playing the same person would race each other (an earlier run left areas unattended).
     ...Object.fromEntries(F.supervisors.map((_, i) => [`supervisor_${i}`, { executor: 'constant-vus', exec: 'supervisor', vus: 1, duration: TOTAL, env: { WHO: String(i) } }])),
     ...Object.fromEntries(F.workers.map((_, i) => [`worker_${i}`, { executor: 'constant-vus', exec: 'worker', vus: 1, duration: TOTAL, env: { WHO: String(i) } }])),
-    dashboards: { executor: 'constant-arrival-rate', exec: 'dashboard', rate: 1, timeUnit: '2s', duration: TOTAL, preAllocatedVUs: 4 },
+    // One VU: it owns the Sub Admin's refresh token (sharing a rotating token would trip reuse detection).
+    dashboards: { executor: 'constant-arrival-rate', exec: 'dashboard', rate: 1, timeUnit: '2s', duration: TOTAL, preAllocatedVUs: 1, maxVUs: 1 },
   },
   thresholds: {
     http_req_failed: ['rate<0.01'],
@@ -143,7 +144,7 @@ export function setup() {
   const sa = post('/auth/login', { identifier: F.subAdmin.mobile, password: F.password }, null, 'setup');
   const v = post('/auth/mfa/verify', { mfaToken: sa.json('mfaToken'), code: totp(F.subAdmin.mfaSecret) }, null, 'setup');
   if (v.status !== 200) throw new Error(`Sub Admin MFA failed: ${v.status} ${v.body}`);
-  return { dashboard: { token: v.json('accessToken') } };
+  return { dashboard: { token: v.json('accessToken'), refresh: v.json('refreshToken') } };
 }
 
 // ---------- citizens: report a problem with a photo, then look at "my complaints" ----------
@@ -159,7 +160,7 @@ export async function citizen() {
   const lat = w.lat + 0.001 + Math.random() * 0.008;
   const lng = w.lng + 0.001 + Math.random() * 0.008;
   const mediaId = await capture(me, lat, lng);
-  if (!mediaId) return;
+  if (!mediaId) return sleep(1); // never hot-loop on a refusal (an earlier soak did, 175 req/s of 429s)
   const c = post('/complaints', { typeId: F.typeId, lat, lng, gpsAccuracyM: 8, landmark: 'Near the market', description: 'Garbage heap not lifted for two days', mediaIds: [mediaId] }, me, 'complaint-create');
   if (check(c, { 'complaint filed': (x) => x.status === 201 })) filed.add(1);
   check(get('/complaints?pageSize=20', me, 'list'), { 'my complaints 200': (x) => x.status === 200 });
@@ -194,13 +195,13 @@ export async function worker() {
   if (!task) return sleep(3);
   const { lat, lng } = task.location;
   const before = await capture(wk, lat + 0.00005, lng);
-  if (!before) return;
+  if (!before) return sleep(2);
   const s = post(`/complaints/${task.id}/start`, { mediaIds: [before], location: { lat, lng, accuracyM: 7 } }, wk, 'start', { responseCallback: CONFLICT_OK });
   if (s.status === 409) return; // reassigned or already started meanwhile
   check(s, { 'work started': (x) => x.status === 201 });
   sleep(2 + Math.random() * 3); // the actual cleaning, compressed
   const after = await capture(wk, lat, lng + 0.00005);
-  if (!after) return;
+  if (!after) return sleep(2);
   const z = post(`/complaints/${task.id}/resolve`, { remark: 'Heap cleared and area swept', mediaIds: [after], location: { lat, lng, accuracyM: 7 } }, wk, 'resolve', { responseCallback: CONFLICT_OK });
   check(z, { 'resolved': (x) => x.status === 201 || x.status === 409 });
   if (z.status === 201) resolvedCount.add(1);
@@ -208,8 +209,16 @@ export async function worker() {
 }
 
 // ---------- officials: dashboard refreshes ----------
+const dash = {};
 export function dashboard(data) {
-  const s = data.dashboard;
+  if (!dash.token) Object.assign(dash, data.dashboard, { at: Date.now() });
+  if (Date.now() - dash.at > 13 * 60_000) {
+    // Long runs outlive the 15-minute access token: rotate like the portal does.
+    const r = post('/auth/refresh', { refreshToken: dash.refresh }, null, 'refresh');
+    check(r, { 'refresh ok': (x) => x.status === 200 });
+    Object.assign(dash, { token: r.json('accessToken'), refresh: r.json('refreshToken'), at: Date.now() });
+  }
+  const s = dash;
   for (const p of ['/reports/summary', '/reports/trend', '/reports/ageing?groupBy=ward', '/reports/breakdown?by=ward', '/reports/hotspots']) {
     check(get(p, s, 'report'), { 'report 200': (x) => x.status === 200 });
   }

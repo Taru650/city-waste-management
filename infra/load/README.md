@@ -19,6 +19,13 @@ node prepare.mjs                          # fresh DB cwm_load_test, moto S3, Red
 ./sample.sh &                             # CPU/RSS of API, PostgreSQL, Redis, moto → results/resources.csv
 RATE=2.8 RAMP=1m HOLD=10m k6 run load.js  # → results/summary.json
 ```
+**Soak (1 hour):** moto keeps objects in memory and does not last an hour; use MinIO:
+`LOAD_S3=minio MINIO_BIN=/path/to/minio LOAD_CITIZENS=30000 LOAD_WORKERS=150 node prepare.mjs`, then
+`./probe.sh &` (supervisor inbox latency every 15 s) and `RATE=2.8 HOLD=60m k6 run load.js`.
+Workers above ~2 complaints/worker/hour hit the staff upload cap (300/day), so scale `LOAD_WORKERS` with `RATE`.
+
+**Report scaling:** `node report-scale.mjs 365 1000` adds a year of history to one ULB and times
+every dashboard report (`REUSE=1` re-times without regenerating). Results: [RESULTS.md](RESULTS.md).
 `RATE` is complaints per second. Thresholds (the run fails if any is missed): < 1 % failed
 requests, > 99 % checks, p95 < 1.5 s for filing / start / resolve / login, < 3 s for the media
 confirm, < 800 ms for lists, < 2.5 s for dashboard reports.
@@ -28,5 +35,5 @@ confirm, < 800 ms for lists, < 2.5 s for dashboard reports.
   numbers are pessimistic for the API and say nothing about network latency.
 - **No ClamAV:** production scans every upload; budget ~50–200 ms extra per confirm.
 - **moto** stands in for S3; its latency is not representative (reported for information).
-- **10-minute hold, not a full hour:** the rate is the hourly peak rate; an hour-long soak (for
-  leaks and table growth) belongs on staging.
+- **One hour, one machine:** the soak shows no latency drift and slow API memory growth; a
+  multi-day soak on staging is still worth running before statewide rollout.

@@ -1,0 +1,79 @@
+Found Java version 21.0.12.1
+Available memory: 16091 MB
+Using JVM args: -Xmx4022m
+Picked up JAVA_TOOL_OPTIONS: -Djavax.net.ssl.trustStore=/etc/ssl/certs/java/cacerts -Djavax.net.ssl.trustStoreType=JKS -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=43413 -Dhttp.nonProxyHosts=localhost|127.0.0.1|::1|127.*|0.*|::|169.254.*|api.anthropic.com|api-staging.anthropic.com|api-pr-preview.anthropic.com|mcp-proxy.anthropic.com|mcp-proxy-staging.anthropic.com|registry.npmjs.org|jsr.io|npm.jsr.io|pypi.org|files.pythonhosted.org|index.crates.io|proxy.golang.org|host.docker.internal|10.*|172.16.*|172.17.*|172.18.*|172.19.*|172.20.*|172.21.*|172.22.*|172.23.*|172.24.*|172.25.*|172.26.*|172.27.*|172.28.*|172.29.*|172.30.*|172.31.*|192.168.*|100.64.0.0/10|*.svc.cluster.local|*.svc.cluster.local -Djdk.http.auth.tunneling.disabledSchemes= -Djdk.http.auth.proxying.disabledSchemes=
+907 [main] INFO  org.parosproxy.paros.Constant - Copying default configuration to /root/.ZAP/config.xml
+1274 [main] INFO  org.parosproxy.paros.Constant - Creating directory /root/.ZAP/session
+1274 [main] INFO  org.parosproxy.paros.Constant - Creating directory /root/.ZAP/dirbuster
+1274 [main] INFO  org.parosproxy.paros.Constant - Creating directory /root/.ZAP/fuzzers
+1274 [main] INFO  org.parosproxy.paros.Constant - Creating directory /root/.ZAP/plugin
+Oct 25, 2026 12:50:36 PM java.util.prefs.FileSystemPreferences$1 run
+INFO: Created user preferences directory.
+This ZAP installation is over a year old - its probably very out of date
+Job replacer set deleteAllRules = true
+Job replacer set description = API bearer token (Sub Admin)
+Job replacer set url = http://127.0.0.1:3100/.*
+Job replacer set matchType = req_header
+Job replacer set matchString = Authorization
+Job replacer set replacementString = Bearer ${API_TOKEN}
+Job replacer set description = Portal session cookies (Sub Admin)
+Job replacer set url = http://localhost:3200/.*
+Job replacer set matchType = req_header
+Job replacer set matchString = Cookie
+Job replacer set replacementString = ${PORTAL_COOKIE}
+Job replacer set description = Portal CSRF header
+Job replacer set url = http://localhost:3200/.*
+Job replacer set matchType = req_header
+Job replacer set matchString = x-cwm-csrf
+Job replacer set replacementString = 1
+Job openapi set apiUrl = http://127.0.0.1:3100/api/docs-json
+Job openapi set targetUrl = http://127.0.0.1:3100
+Job openapi set context = api
+Job spider set context = portal
+Job spider set url = http://localhost:3200/dashboard
+Job spider set maxDuration = 3
+Job spider set context = portal
+Job spider set url = http://localhost:3200/login
+Job spider set maxDuration = 1
+Job passiveScan-wait set maxDuration = 5
+Job activeScan set context = api
+Job activeScan set maxScanDurationInMins = 25
+Job activeScan set threadPerHost = 4
+Job activeScan set context = portal
+Job activeScan set maxScanDurationInMins = 15
+Job activeScan set threadPerHost = 4
+Job report set template = traditional-html
+Job report set reportDir = ${REPORT_DIR}
+Job report set reportFile = zap-report.html
+Job report set reportTitle = Swachh Seva DAST (API + portal)
+Job report set template = traditional-json
+Job report set reportDir = ${REPORT_DIR}
+Job report set reportFile = zap-report.json
+Job replacer set deleteAllRules = true
+Job replacer started
+Existing Replace rules deleted
+Job replacer finished, time taken: 00:00:00
+Job openapi started
+Job openapi added 67 URLs
+Job openapi finished, time taken: 00:00:01
+Job spider started
+Job spider requesting URL http://localhost:3200
+Job spider found 56 URLs
+Job spider finished, time taken: 00:00:02
+Job spider started
+Job spider requesting URL http://localhost:3200
+Job spider found 60 URLs
+Job spider finished, time taken: 00:00:02
+Job passiveScan-wait started
+Job passiveScan-wait finished, time taken: 00:00:07
+Job activeScan started
+Job activeScan finished, time taken: 00:01:41
+Job activeScan started
+Job activeScan finished, time taken: 00:00:32
+Job report started
+Job report generated report /home/user/city-waste-management/infra/security/results/zap-report.html
+Job report finished, time taken: 00:00:00
+Job report started
+Job report generated report /home/user/city-waste-management/infra/security/results/zap-report.json
+Job report finished, time taken: 00:00:00
+Automation plan succeeded!

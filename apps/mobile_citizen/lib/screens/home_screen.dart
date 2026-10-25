@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'complaint_detail_screen.dart';
 import 'new_complaint_screen.dart';
+import 'privacy_screens.dart';
 
 final myComplaintsProvider = FutureProvider.autoDispose<Paged<Complaint>>((ref) => ref.watch(complaintsRepoProvider).list(pageSize: 50));
 final notificationsProvider = FutureProvider.autoDispose<Paged<AppNotification>>((ref) => ref.watch(notificationsRepoProvider).list());
@@ -178,6 +179,21 @@ class _Profile extends ConsumerWidget {
             await ref.read(authRepoProvider).setLanguage(v.first).catchError((_) {});
           },
         ),
+      ),
+      const Divider(height: 24),
+      if (me != null)
+        ListTile(key: const Key('edit-profile'), leading: const Icon(Icons.edit), title: Text(s.t('editProfile')), onTap: () => showCorrectProfile(context, ref, me)),
+      ListTile(
+        key: const Key('open-my-data'), leading: const Icon(Icons.download), title: Text(s.t('myData')),
+        onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const MyDataScreen())),
+      ),
+      ListTile(
+        leading: const Icon(Icons.privacy_tip), title: Text(s.t('privacyNotice')),
+        onTap: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const PrivacyNoticeScreen())),
+      ),
+      ListTile(
+        key: const Key('delete-account'), leading: const Icon(Icons.delete_forever, color: Colors.red),
+        title: Text(s.t('deleteAccount'), style: const TextStyle(color: Colors.red)), onTap: () => showDeleteAccount(context, ref),
       ),
       const SizedBox(height: 24),
       const SignOutButton(),

@@ -44,7 +44,7 @@ void main() {
   test('registration carries a Play Integrity proof for the register challenge', () async {
     final source = FakeIntegritySource('org.citywaste.cwm_citizen');
     final auth = AuthRepository(api, attestor: Attestor(api, source));
-    await auth.registerCitizen(homeWardId: 'w', name: 'A', mobile: '9876543210', email: 'a@x.in', password: 'Swachh#2026');
+    await auth.registerCitizen(homeWardId: 'w', name: 'A', mobile: '9876543210', email: 'a@x.in', password: 'Swachh#2026', consentNoticeVersion: 'v1');
     final body = bodyOf('/auth/register');
     expect(body['attestationChallenge'], 'register.123.abc.mac');
     expect(source.nonces.single, integrityNonce('register.123.abc.mac'));

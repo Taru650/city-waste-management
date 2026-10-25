@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/privacy_screens.dart';
 
 void main() {
   CoreConfig.fromEnvironment().assertReleaseReady();
@@ -53,6 +54,7 @@ class SessionGate extends ConsumerWidget {
             ),
           );
         }
+        if (me.consentRequired) return const ConsentScreen();
         return const HomeScreen();
       },
     );

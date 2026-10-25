@@ -1,5 +1,5 @@
 // Prepares a load-test environment: fresh database with real migrations, moto S3, Redis DB 13,
-// one ULB (16 wards, 4 areas with supervisors), 40 workers, 10,000 citizens, a Sub Admin with
+// one ULB (16 wards, 4 areas with supervisors), 40 workers, 10,000 citizens (LOAD_CITIZENS), a Sub Admin with
 // TOTP, and a realistic phone photo. Writes fixtures.json for the k6 script.
 import { spawn, spawnSync } from 'node:child_process';
 import { createCipheriv, createHmac, randomBytes } from 'node:crypto';
@@ -20,6 +20,7 @@ const up = async (url) => fetch(url, { signal: AbortSignal.timeout(500) }).then(
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function ensureS3() {
+  if (process.env.LOAD_S3 === 'minio') return ensureMinio();
   if (!(await up(S3.endpoint))) {
     const bin = process.env.MOTO_SERVER_BIN ?? (existsSync('/opt/moto-venv/bin/moto_server') ? '/opt/moto-venv/bin/moto_server' : 'moto_server');
     const u = new URL(S3.endpoint);
@@ -27,6 +28,31 @@ async function ensureS3() {
     for (let i = 0; i < 60 && !(await up(S3.endpoint)); i++) await sleep(250);
   }
   await fetch(`${S3.endpoint}/${S3.bucket}`, { method: 'PUT', body: '<CreateBucketConfiguration><LocationConstraint>ap-south-1</LocationConstraint></CreateBucketConfiguration>' });
+}
+
+/** MinIO (the pilot stack's S3), fresh data directory each run. MINIO_BIN or `minio` on PATH. */
+async function ensureMinio() {
+  const u = new URL(S3.endpoint);
+  const dataDir = process.env.MINIO_DATA ?? join(here, 'results/minio-data');
+  // Never wipe the directory under a running server (it answers SlowDownWrite forever after).
+  const running = spawnSync('pgrep', ['-f', `minio server ${dataDir}`], { encoding: 'utf8' }).stdout.trim();
+  if (running) {
+    spawnSync('kill', running.split('\n'));
+    for (let i = 0; i < 40 && (await up(`${S3.endpoint}/minio/health/live`)); i++) await sleep(250);
+  }
+  spawnSync('rm', ['-rf', dataDir]);
+  spawnSync('mkdir', ['-p', dataDir]);
+  if (!(await up(`${S3.endpoint}/minio/health/live`))) {
+    spawn(process.env.MINIO_BIN ?? 'minio', ['server', dataDir, '--address', `${u.hostname}:${u.port}`, '--quiet'], {
+      stdio: 'ignore', detached: true,
+      env: { ...process.env, MINIO_ROOT_USER: apiEnv.S3_ACCESS_KEY_ID, MINIO_ROOT_PASSWORD: apiEnv.S3_SECRET_ACCESS_KEY },
+    }).unref();
+    for (let i = 0; i < 120 && !(await up(`${S3.endpoint}/minio/health/live`)); i++) await sleep(250);
+  }
+  const { S3Client, CreateBucketCommand } = req('@aws-sdk/client-s3');
+  const s3 = new S3Client({ endpoint: S3.endpoint, region: 'ap-south-1', forcePathStyle: true,
+    credentials: { accessKeyId: apiEnv.S3_ACCESS_KEY_ID, secretAccessKey: apiEnv.S3_SECRET_ACCESS_KEY } });
+  await s3.send(new CreateBucketCommand({ Bucket: S3.bucket })).catch((e) => { if (e.name !== 'BucketAlreadyOwnedByYou') throw e; });
 }
 
 async function resetDatabase() {

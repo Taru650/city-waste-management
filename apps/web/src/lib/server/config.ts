@@ -5,6 +5,8 @@ export const serverConfig = {
   mediaOrigins: (process.env.MEDIA_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   mapTileUrl: process.env.MAP_TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   cookieSecure: process.env.COOKIE_SECURE !== 'false',
+  /** hCaptcha site key (public). The API requires CAPTCHA on forgot-password in production. */
+  hcaptchaSiteKey: process.env.HCAPTCHA_SITE_KEY || undefined,
 };
 
 export const COOKIES = {

@@ -163,25 +163,40 @@ export class ReportsService {
     const { where, params, range } = this.build(user, q, false);
     const f = params.length + 1;
     const t = params.length + 2;
+    // Counted backwards from the current open count: pending at the end of day d = open now − the net
+    // change of events after d, where an event's change is (to open) − (from open). Only events since
+    // the start of the range are read (no sort over the whole history). Relies on complaints.status
+    // being the last event's to_status and from_status the previous one, which the state machine writes
+    // in one transaction. The previous per-day correlated subqueries took 31 s for 30 days and 328 s for
+    // a year in a ULB with a year of history; test/reports-trend-equivalence keeps them as the reference.
+    const sod = `($${f}::date)::timestamp AT TIME ZONE ${TZ}`;
+    const eod = `($${t}::date + 1)::timestamp AT TIME ZONE ${TZ}`;
     const rows = await this.ds.query(
-      `WITH scoped AS (SELECT c.id, c.created_at FROM complaints c WHERE ${where}),
-       days AS (
-         SELECT d::date AS day,
-                (d::date)::timestamp AT TIME ZONE ${TZ} AS sod,
-                (d::date + 1)::timestamp AT TIME ZONE ${TZ} AS eod
-           FROM generate_series($${f}::date, $${t}::date, interval '1 day') d
-       ),
+      `WITH scoped AS (SELECT c.id, c.created_at, c.status FROM complaints c WHERE ${where}),
+       days AS (SELECT d::date AS day FROM generate_series($${f}::date, $${t}::date, interval '1 day') d),
        ev AS (
-         SELECT e.complaint_id, e.created_at AS since, e.to_status, e.action,
-                COALESCE(lead(e.created_at) OVER (PARTITION BY e.complaint_id ORDER BY e.id), 'infinity') AS until
+         SELECT e.created_at, e.action,
+                (e.to_status IN ${OPEN})::int - COALESCE((e.from_status IN ${OPEN})::int, 0) AS change
            FROM complaint_events e JOIN scoped s ON s.id = e.complaint_id
+          WHERE e.created_at >= ${sod}
+       ),
+       open_now AS (SELECT count(*) AS n FROM scoped WHERE status IN ${OPEN}),
+       after_range AS (SELECT COALESCE(sum(change), 0) AS n FROM ev WHERE created_at >= ${eod}),
+       daily AS (
+         SELECT (created_at AT TIME ZONE ${TZ})::date AS day, sum(change) AS change, count(*) FILTER (WHERE action = 'RESOLVE') AS resolved
+           FROM ev WHERE created_at < ${eod} GROUP BY 1
+       ),
+       recv AS (
+         SELECT (created_at AT TIME ZONE ${TZ})::date AS day, count(*) AS n FROM scoped
+          WHERE created_at >= ${sod} AND created_at < ${eod} GROUP BY 1
        )
        SELECT to_char(days.day, 'YYYY-MM-DD') AS date,
-              (SELECT count(*) FROM scoped s WHERE s.created_at >= days.sod AND s.created_at < days.eod)::int AS received,
-              (SELECT count(*) FROM ev WHERE ev.action = 'RESOLVE' AND ev.since >= days.sod AND ev.since < days.eod)::int AS resolved,
-              (SELECT count(DISTINCT ev.complaint_id) FROM ev
-                WHERE ev.to_status IN ${OPEN} AND ev.since < days.eod AND ev.until >= days.eod)::int AS pending
-         FROM days ORDER BY days.day`,
+              COALESCE(recv.n, 0)::int AS received,
+              COALESCE(daily.resolved, 0)::int AS resolved,
+              (open_now.n - after_range.n
+                 - COALESCE(sum(daily.change) OVER (ORDER BY days.day DESC ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0))::int AS pending
+         FROM days LEFT JOIN recv USING (day) LEFT JOIN daily USING (day) CROSS JOIN open_now CROSS JOIN after_range
+        ORDER BY days.day`,
       [...params, range.from, range.to],
     );
     return { range, rows };

@@ -1,0 +1,166 @@
+▲ Next.js 16.4.3
+- Local:         http://localhost:3200
+- Network:       http://192.0.2.2:3200
+✓ Ready in 161ms
+✓ Running next.config.ts took 91ms
+⚠ "next start" does not work with "output: standalone" configuration. Use "node .next/standalone/server.js" instead.
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}
+⨯ Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined.
+    at ignore-listed frames {
+  digest: '3862522066'
+}

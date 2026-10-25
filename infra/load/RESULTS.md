@@ -32,3 +32,44 @@ up (1,749 of 1,763 resolved within the run). Zero errors in every run, including
    (main + thumbnail) → 10,000 complaints/hour ≈ 10 GB/hour.
 
 Raw k6 summaries and CPU samples are written to `results/` (not committed).
+
+## 1-hour soak (M9)
+Same machine, S3 on a local **MinIO** (the moto emulator keeps objects in memory and fell over
+within the hour), `turbo` encoder, 30,000 citizens, 150 workers, a steady 2.8 complaints/s for 60 min.
+
+| Measure | Result |
+|---|---|
+| Filed / resolved | 10,163 / 10,158 (field work kept pace for the whole hour) |
+| Failed requests | 0.00 %; every threshold met |
+| p95 | media confirm 164 ms, filing 42 ms, lists 28 ms, dashboard reports 1.2 s |
+| Supervisor inbox (probe every 15 s) | 22–26 ms average in every 10-minute window: no drift as data grew |
+| API memory (RSS) | 433 → 473 MB over 50 min (~0.8 MB/min). Not proven a leak; **watch it in the pilot** (alert at 1 GB, restart is safe: the API is stateless) |
+| CPU | API flat; PostgreSQL 0.73 → 1.11 cores, rising with data, driven by the dashboard reports |
+
+Two harness bugs found on the way, both fixed: workers hit the 300 uploads/day staff cap (the real
+limit, working as intended) and the harness retried in a hot loop instead of backing off.
+
+## Report scaling (M9)
+`report-scale.mjs`: one ULB with a year of synthetic history (365,000 complaints, 1.6 M events,
+1,000/day), every dashboard report timed through the real `ReportsService` (mean of 3 warm runs).
+
+| Report | 30 days | 1 year |
+|---|---|---|
+| summary | 216 ms | 728 ms |
+| **trend, before** | **31,460 ms** | **328,042 ms** |
+| trend, after | 580 ms | 2,251 ms |
+| ageing | 121 ms | 122 ms |
+| breakdown | 148 ms | 652 ms |
+| hotspots | 77 ms | 840 ms |
+
+The trend report rebuilt "pending at day end" with a correlated subquery per day over all events
+(days × events); a 30-day dashboard would have timed out. It now counts back from the current open
+count and reads only events since the range start (plus an index on `complaint_events.created_at`).
+`test/reports-trend-equivalence.e2e-spec.ts` keeps the old query as the reference and checks both
+agree on random histories with reopens and complaints carried in from before the range.
+
+```bash
+LOAD_S3=minio MINIO_BIN=/path/to/minio node prepare.mjs   # fresh load database (+ MinIO)
+node report-scale.mjs 365 1000                            # generate a year, time the reports
+REUSE=1 node report-scale.mjs                             # re-time on the history already loaded
+```

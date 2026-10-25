@@ -19,7 +19,8 @@ Map<String, dynamic> complaintJson({String id = 'c1', String status = 'ASSIGNED'
       'events': [{'action': 'CREATE', 'toStatus': 'PENDING', 'at': DateTime.now().toUtc().toIso8601String()}], 'feedback': [],
     };
 
-Map<String, dynamic> meJson({String role = 'CITIZEN'}) => {'id': 'me', 'role': role, 'name': 'Asha', 'mobile': '9876543210', 'email': 'a@x.in', 'preferredLanguage': 'en'};
+Map<String, dynamic> meJson({String role = 'CITIZEN', bool consentRequired = false}) =>
+    {'id': 'me', 'role': role, 'name': 'Asha', 'mobile': '9876543210', 'email': 'a@x.in', 'preferredLanguage': 'en', 'consentRequired': consentRequired};
 
 /// Standard happy-path routes for the citizen app.
 void citizenRoutes(FakeBackend b) {
@@ -29,6 +30,12 @@ void citizenRoutes(FakeBackend b) {
   b.on('GET /auth/me', (_, _) => (200, meJson()));
   b.on('POST /devices', (_, _) => (201, {'id': 'dev-1'}));
   b.on('POST /attestation/challenge', (_, _) => (200, {'enabled': false})); // Play Integrity off, as in development
+  b.on('GET /privacy/notice', (_, _) => (200, {
+        'version': '2026-10-25', 'purpose': 'COMPLAINTS_SERVICE',
+        'grievanceOfficer': {'name': 'Grievance Officer', 'email': 'go@example.gov.in', 'phone': ''},
+        'en': {'title': 'Privacy notice', 'sections': [{'heading': 'What we collect', 'body': 'Name, mobile, photos.'}]},
+        'hi': {'title': 'गोपनीयता सूचना', 'sections': [{'heading': 'हम क्या लेते हैं', 'body': 'नाम, मोबाइल, फ़ोटो।'}]},
+      }));
   b.on('GET /complaints', (_, _) => (200, {'total': 1, 'items': [complaintJson()]}));
   b.on('GET /notifications', (_, _) => (200, {'total': 0, 'items': []}));
   b.on('GET /masters/districts', (_, _) => (200, [{'id': 'd1', 'lgdCode': 446, 'name': 'Raipur', 'nameHi': 'रायपुर'}]));

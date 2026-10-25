@@ -5,8 +5,10 @@ import { MediaPipeline1761400000000 } from './migrations/1761400000000-MediaPipe
 import { SlaNotifications1761500000000 } from './migrations/1761500000000-SlaNotifications';
 import { Attestation1761600000000 } from './migrations/1761600000000-Attestation';
 import { EventZones1761700000000 } from './migrations/1761700000000-EventZones';
+import { Privacy1761800000000 } from './migrations/1761800000000-Privacy';
+import { ReportIndexes1761900000000 } from './migrations/1761900000000-ReportIndexes';
 
-export const MIGRATIONS = [InitialSchema1761300000000, MediaPipeline1761400000000, SlaNotifications1761500000000, Attestation1761600000000, EventZones1761700000000];
+export const MIGRATIONS = [InitialSchema1761300000000, MediaPipeline1761400000000, SlaNotifications1761500000000, Attestation1761600000000, EventZones1761700000000, Privacy1761800000000, ReportIndexes1761900000000];
 
 /**
  * Queries are written in SQL through the DataSource (PostGIS-heavy, and keeps

@@ -13,7 +13,8 @@ security) pass in CI. The next milestone does not start until then.
 | M6 | Next.js web portal (admins, supervisors) | ✅ Done |
 | M7 | Flutter Citizen app and Staff app | ✅ Done (code + tests; not yet run on a phone, see below) |
 | M8 | Play Integrity, event zones + temporary staff, push in apps, load test (k6, 10× peak), APK build in CI | ✅ Done (phone tests carried to M9) |
-| M9 | First phone tests (low-end, 3G), DAST (OWASP ZAP), MobSF, external pentest, CERT-In audit, pilot ULB | ⏭ Next |
+| M9 | DPDP flows, DAST + fixes, soak, backup/restore drill, pilot runbook and audit pack | ✅ Done (phones, accounts, external audit and pilot need the ULB/state) |
+| M10 | Pilot: phone tests, accounts, external pentest + CERT-In audit, go-live in one ULB | ⏭ Next (owner: ULB/state, vendor support) |
 
 ---
 
@@ -161,7 +162,16 @@ Shared code in `packages/flutter_core`; two apps, `apps/mobile_citizen` (Swachh 
 - Nothing has run on a phone yet, and the CI APK job has not run (no PR). Low-end phone over 3G testing moves to M9.
 - iOS: no App Attest, so iOS keys are refused when enforcing.
 
-## M9 — Phones, security sign-off and pilot
-- First real-device run: both APKs from CI on a low-end Android phone over 3G (camera, GPS gate, Keystore signing, Play Integrity, offline queue, push); fix what breaks.
-- Needs from the ULB/state team: Play Console apps, Google Cloud project + Play Integrity service account, Firebase project, release keystore.
-- MobSF on the APKs, OWASP ZAP full scan against staging, external pentest, CERT-In-empanelled audit, DPDP consent and deletion flows, hour-long soak on staging, pilot in one ULB.
+## M9 — Pilot readiness ✅ what can be done without phones, accounts and auditors
+**Done**
+- **DPDP Act 2023:** versioned Hindi/English privacy notice (public on the portal and in the app), consent recorded at registration (no account without it) and asked again when the notice changes, data export, correction, password-confirmed erasure that also withdraws consent (complaints stay anonymously), daily retention job. Feedback stays append-only except clearing the remark.
+- **Security testing (vendor-side):** 1-hour soak at the 10× peak rate (2.8 complaints/s, 30,000 citizens, 150 workers): 10,163 filed, 10,158 resolved, 0 failed requests, inbox latency flat (22–26 ms), API memory +0.8 MB/min to watch ([results](../infra/load/RESULTS.md)). Report scaling on a year of one ULB's history (365,000 complaints) found the trend report taking 31 s for 30 days and 328 s for a year; rewritten to 0.6 s / 2.3 s with an equivalence test against the old query. Authenticated OWASP ZAP scan of the API (45,778 requests, measured coverage) and portal: two 500s, a missing static-asset CSP and an input-validation gap found and fixed ([DAST report](ops/DAST.md); confirmation scan in progress). dependency audit clean (API, portal). Fixed: a wrong TOTP code while signed in logged admins out (401 → 400); portal forgot-password had no CAPTCHA although production requires it (hCaptcha added).
+- **Backup and restore:** `infra/ops/backup.sh` (pg_dump, optional AES-256 encryption, checksum) and `restore-drill.sh` (fresh database, checksum, restore time, migrations, append-only triggers, complaint numbering consistency). Drill on a hot backup taken mid-soak: 30,045 users / ~2,800 complaints restored in 3 s; the drill catches a tampered sequence. Runs in CI.
+- **Pilot and audit material:** [`docs/ops/PILOT_RUNBOOK.md`](ops/PILOT_RUNBOOK.md) (accounts and keys, master data, deploy, phone smoke test, go-live metrics, rollback), [`docs/ops/INCIDENT_RESPONSE.md`](ops/INCIDENT_RESPONSE.md) (CERT-In 6-hour reporting, containment, key rotation), [`docs/ops/AUDIT_PACK.md`](ops/AUDIT_PACK.md) (scope, accounts, data flows, permission matrix, STRIDE, evidence).
+
+**Not done — needs people, devices or accounts the vendor does not have**
+- First run on real low-end phones over 3G (both APKs come from the CI `android` job, which has not run: no PR yet).
+- Google Play Console, Play Integrity and Firebase projects, hCaptcha, SMTP, hosting, Grievance Officer (see the runbook's account table).
+- External pentest and the CERT-In-empanelled audit; MobSF on the release APKs.
+- Legal review of the privacy notice text.
+- The pilot itself.

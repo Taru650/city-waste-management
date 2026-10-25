@@ -16,6 +16,25 @@ describe('Security: input handling', () => {
   });
   afterAll(() => ctx.app.close());
 
+  // Found by the authenticated ZAP scan (M9): these reached PostgreSQL and came back as 500.
+  it('NUL bytes anywhere in a request are refused with 400, never a 500', async () => {
+    const nul = 'abc\u0000def-push-token-0000000000';
+    await ctx.http().post(api('/notifications/push-tokens')).set(bearer(citizen)).send({ token: nul, platform: 'ANDROID' }).expect(400);
+    await ctx.http().delete(api('/notifications/push-tokens')).set(bearer(citizen)).send({ token: nul }).expect(400);
+    await ctx.http().get(api('/complaints')).query({ status: 'PENDING\u0000' }).set(bearer(citizen)).expect(400);
+    await ctx.http().post(api('/auth/login')).send({ identifier: 'user\u0000@example.in', password: 'x\u0000y' }).expect(400);
+    const at = j.wards[0].center;
+    const res = await ctx.http().post(api('/complaints')).set(bearer(citizen))
+      .send({ typeId, ...at, description: 'Garbage \u0000 here', mediaIds: [await quickMedia(ctx, subOf(citizen), at)] });
+    expect(res.status).toBe(400);
+  });
+
+  it('an oversized push token is refused, not crashed into the unique index', async () => {
+    await ctx.http().post(api('/notifications/push-tokens')).set(bearer(citizen)).send({ token: 'a'.repeat(4000), platform: 'ANDROID' }).expect(400);
+    await ctx.http().post(api('/notifications/push-tokens')).set(bearer(citizen)).send({ token: 'fcm:token<script>', platform: 'ANDROID' }).expect(400);
+    await ctx.http().post(api('/notifications/push-tokens')).set(bearer(citizen)).send({ token: 'dXyZ-123_abc:APA91bHPRgkF3JUikC4ENAHEeMrd41Zxv3hVZjC9KtT8OvPVGJ-hQMRKRrZuJAEcl7B338qju59zJMjw2DeLu', platform: 'ANDROID' }).expect(204);
+  });
+
   const SQLI = ["' OR '1'='1", "1; DROP TABLE complaints; --", "' UNION SELECT password_hash FROM users --", '$1', "\\'; --"];
 
   it.each(SQLI)('SQL injection in query, path and body parameters is inert: %p', async (payload) => {

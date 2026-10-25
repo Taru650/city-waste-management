@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_core/flutter_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'privacy_screens.dart';
+
 final _mobileRe = RegExp(r'^[6-9]\d{9}$');
 final _emailRe = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
@@ -23,6 +25,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   List<NamedItem> _districts = [], _ulbs = [], _wards = [];
   String? _districtId, _ulbId, _wardId, _error;
   bool _busy = false;
+  bool _consent = false, _consentMissing = false;
 
   @override
   void initState() {
@@ -60,14 +63,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   Future<void> _submit() async {
     if (!_form.currentState!.validate()) return;
+    final s = S.of(context);
+    if (!_consent) return setState(() => _consentMissing = true);
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
+      // The version the citizen was shown is the one recorded (DPDP consent).
+      final notice = await ref.read(privacyNoticeProvider(s.lang).future);
       await ref.read(authRepoProvider).registerCitizen(
             homeWardId: _wardId!, name: _name.text.trim(), guardianName: _guardian.text.trim(),
             mobile: _mobile.text.trim(), email: _email.text.trim(), password: _pw.text,
+            consentNoticeVersion: notice.version, consentLanguage: s.lang,
           );
       await ref.read(sessionProvider.notifier).registered();
       if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
@@ -130,7 +138,29 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               key: const Key('reg-password2'), controller: _pw2, obscureText: true, decoration: InputDecoration(labelText: s.t('confirmPassword')),
               validator: (v) => v == _pw.text ? null : s.t('passwordsDiffer'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
+            CheckboxListTile(
+              key: const Key('consent'),
+              value: _consent,
+              onChanged: (v) => setState(() {
+                _consent = v ?? false;
+                _consentMissing = false;
+              }),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              title: Text(s.t('consentAgree')),
+              subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                TextButton(
+                  key: const Key('open-notice'),
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                  onPressed: () => Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const PrivacyNoticeScreen())),
+                  child: Text(s.t('privacyNotice')),
+                ),
+                // Next to the checkbox, not at the top of a long form the user has scrolled past.
+                if (_consentMissing) Text(s.t('consentNeeded'), key: const Key('consent-error'), style: const TextStyle(color: Colors.red)),
+              ]),
+            ),
+            const SizedBox(height: 8),
             FilledButton(key: const Key('register-submit'), onPressed: _busy ? null : _submit, child: _busy ? const CircularProgressIndicator() : Text(s.t('register'))),
           ]),
         ),

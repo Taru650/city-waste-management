@@ -3,6 +3,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppConfig } from './config/configuration';
+import { nulGuard } from './common/nul-guard';
 
 export const API_PREFIX = 'api/v1';
 
@@ -13,6 +14,7 @@ export function configureApp(app: INestApplication, config: AppConfig) {
   // Behind the load balancer / nginx: trust exactly one proxy hop for the client IP (rate limits, audit).
   express.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
   express.useBodyParser('json', { limit: '1mb' });
+  app.use(nulGuard);
 
   app.use(
     helmet({

@@ -16,8 +16,8 @@ apps/web               Next.js portal for administrators and supervisors (dashbo
 apps/mobile_citizen    Flutter Citizen app (Swachh Seva)
 apps/mobile_staff      Flutter Staff app for supervisors and field workers (Swachh Seva Staff)
 packages/flutter_core  shared Dart: API client, camera capture + signing, offline outbox, Hindi/English
-infra/                 docker-compose (pilot); infra/load: k6 load test; k8s later
-docs/                  plan, milestones, security
+infra/                 docker-compose (pilot); load/ k6 load + soak; ops/ backup + restore drill; security/ OWASP ZAP DAST
+docs/                  plan, milestones, security; ops/ pilot runbook, incident response, audit pack
 ```
 
 See [`apps/api/README.md`](apps/api/README.md), [`apps/web/README.md`](apps/web/README.md) and [`packages/flutter_core/README.md`](packages/flutter_core/README.md) (both mobile apps) to run each app and its tests.
