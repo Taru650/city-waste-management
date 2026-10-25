@@ -209,6 +209,14 @@ jobs:
           cache: true
       - name: Kotlin type-check of the native code (no SDK needed; fails fast)
         run: flutter precache --android && bash packages/flutter_core/tool/kotlin_check.sh
+      # The Flutter template lets each Gradle daemon take an 8 GB heap + 4 GB metaspace. With R8 and the
+      # Kotlin daemon that exhausted the runner's memory during the second APK build and the runner was
+      # killed ("received a shutdown signal", exit 143). User-level settings override the project's.
+      - name: Cap Gradle memory for the hosted runner
+        run: |
+          mkdir -p ~/.gradle
+          printf 'org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m -XX:+HeapDumpOnOutOfMemoryError\nkotlin.daemon.jvmargs=-Xmx1g\norg.gradle.workers.max=2\n' > ~/.gradle/gradle.properties
+          free -m
       - name: Throwaway release keystore (real keys live only in the release pipeline)
         run: |
           keytool -genkeypair -keystore "$RUNNER_TEMP/ci.jks" -storepass ci-store-pass -keypass ci-store-pass -alias ci \
@@ -224,6 +232,8 @@ jobs:
               --dart-define=API_BASE_URL=https://api.example.invalid/api/v1 \
               --dart-define=CERT_PINS=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB= \
               --dart-define=PLAY_CLOUD_PROJECT_NUMBER=1)
+            (cd "apps/$app/android" && ./gradlew --stop) || true   # free the daemon's memory before the next app
+            free -m
           done
       - name: Merged APK permissions (camera-only evidence survives plugin manifest merging)
         run: |
