@@ -181,6 +181,7 @@ will not connect to your computer.
 ## When something fails
 | Symptom | Fix |
 |---|---|
+| `ports are not available: exposing port TCP 127.0.0.1:5432` (Windows) | Something on Windows holds 5432 (often a PostgreSQL installed on Windows: `netstat -ano \| findstr :5432` in PowerShell). The stack only needs that port for your own `psql`: `export DB_PORT=5433` and run `up -d` again |
 | `port is already allocated` on 5432/6379 | the test containers and compose are both running: `docker stop cwm-test-pg cwm-test-redis` (or `docker compose … down` before tests) |
 | API container restarts, log says a setting is missing | `.env` step in part 6 skipped or a key empty |
 | API "unhealthy" for minutes on first start | ClamAV is downloading its database; `docker compose … logs -f clamav` |
