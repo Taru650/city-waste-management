@@ -35,7 +35,9 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
     volumes: [miniodata:/data]
-    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    # Host ports can be moved (MINIO_PORT / MINIO_CONSOLE_PORT) when Windows has 9000 reserved or in use;
+    # S3_PUBLIC_ENDPOINT in apps/api/.env must then use the same port.
+    ports: ["127.0.0.1:${MINIO_PORT:-9000}:9000", "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"]
 
   # Creates the private media bucket once.
   minio-init:
@@ -92,7 +94,7 @@ services:
     environment:
       API_URL: http://api:3000/api/v1
       PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:3001}
-      MEDIA_ORIGINS: ${MEDIA_PUBLIC_ORIGIN:-http://localhost:9000}
+      MEDIA_ORIGINS: ${MEDIA_PUBLIC_ORIGIN:-http://localhost:${MINIO_PORT:-9000}}
       MAP_TILE_URL: ${MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
     depends_on: [api]
     ports: ["127.0.0.1:3001:3001"]

@@ -185,5 +185,6 @@ will not connect to your computer.
 | API container restarts, log says a setting is missing | `.env` step in part 6 skipped or a key empty |
 | API "unhealthy" for minutes on first start | ClamAV is downloading its database; `docker compose … logs -f clamav` |
 | App: "No internet connection" | `adb reverse` lines not run after reconnecting, or the API is not up (`curl localhost:3000/api/v1/health/ready`) |
+| `ports are not available: exposing port TCP 127.0.0.1:9000` (Windows) | Port 9000 is in use or reserved by Windows (`netsh interface ipv4 show excludedportrange protocol=tcp`). Move it: `export MINIO_PORT=9100 MINIO_CONSOLE_PORT=9101`, set `S3_PUBLIC_ENDPOINT=http://localhost:9100` in `apps/api/.env`, run `up -d` again (and use `adb reverse tcp:9100 tcp:9100` for the phone) |
 | App photos fail to upload | `S3_PUBLIC_ENDPOINT=http://localhost:9000` missing in `apps/api/.env`, or `adb reverse tcp:9000` not run; then `docker compose … up -d api` |
 | `flutter doctor` shows Android licences ✗ | `flutter doctor --android-licenses` |
