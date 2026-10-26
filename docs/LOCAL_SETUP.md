@@ -62,7 +62,7 @@ The tests create and drop their own databases (`cwm_test`, `cwm_e2e_test`); noth
 cd ~/city-waste-management/apps/api
 npm ci
 npm run lint && npm run typecheck
-npm test            # unit + integration + security, about 5 minutes; expect "Tests: 443 passed"
+npm test            # unit + integration + security, about 5 minutes; expect "Tests: 475 passed"
 ```
 If it fails at the start with `No S3 endpoint … moto_server could not be started`, run
 `echo $MOTO_SERVER_BIN` and check that the file exists (step 1).
@@ -75,7 +75,7 @@ npm ci
 npm run lint && npm run typecheck && npm test        # unit tests (49)
 npx playwright install --with-deps chromium          # asks for your sudo password once
 npm run build
-npm run test:e2e                                     # 35 browser tests, about 2 minutes
+npm run test:e2e                                     # 51 browser tests, about 3 minutes
 ```
 
 ## 6. Run the whole system (Docker Compose)
