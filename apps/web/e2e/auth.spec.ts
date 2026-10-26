@@ -132,20 +132,32 @@ test.describe('Sign-in flows', () => {
     await page.getByTestId('user-menu').click();
     const item = page.getByRole('menuitem', { name: 'Sign out' });
     await expect(item).toBeVisible();
-    // Where is the item at the instant the page scrolls (before any re-positioning)? A menu attached
-    // to <body> moves with the page while its button stays in the sticky header, then snaps back,
-    // and a click caught in between landed on nothing.
+    // Is the item still the same distance below its button at the instant the page scrolls (before
+    // any re-positioning)? A menu attached to <body> moved with the page while its button stayed in
+    // the sticky header, then snapped back, and a click caught in between landed on nothing.
     const drift = await item.evaluate(async (el) => {
-      const y0 = el.getBoundingClientRect().y;
+      const button = document.querySelector('[data-testid="user-menu"]')!;
+      const gap = () => el.getBoundingClientRect().y - button.getBoundingClientRect().bottom;
+      const frame = () => new Promise((r) => requestAnimationFrame(r));
+      // Baseline only once the opening animation has finished: three identical frames in a row.
+      let last = NaN;
+      for (let same = 0, i = 0; same < 3 && i < 120; i++) { await frame(); const g = gap(); same = g === last ? same + 1 : 0; last = g; }
+      const g0 = gap();
+      const samples: string[] = [];
       let worst = 0;
-      const seen = () => { worst = Math.max(worst, Math.abs(el.getBoundingClientRect().y - y0)); };
-      window.addEventListener('scroll', seen, { capture: true });
-      for (const dy of [120, 120, 120]) { window.scrollBy(0, dy); seen(); await new Promise((r) => requestAnimationFrame(r)); }
-      window.removeEventListener('scroll', seen, { capture: true });
-      return { worst, scrolled: window.scrollY };
+      const seen = (when: string) => {
+        const d = gap() - g0;
+        worst = Math.max(worst, Math.abs(d));
+        samples.push(`${when}:${Math.round(d)}@${Math.round(window.scrollY)} ${el.closest('.ant-dropdown')?.className.match(/ant-slide\S*/g)?.join(' ') ?? ''}`);
+      };
+      const onScroll = () => seen('scroll');
+      window.addEventListener('scroll', onScroll, { capture: true });
+      for (const dy of [120, 120, 120]) { window.scrollBy(0, dy); seen('after'); await frame(); }
+      window.removeEventListener('scroll', onScroll, { capture: true });
+      return { worst, scrolled: window.scrollY, samples };
     });
     expect(drift.scrolled).toBeGreaterThan(100);
-    expect(drift.worst).toBeLessThan(2);
+    expect(drift.worst, drift.samples.join(' | ')).toBeLessThan(2);
     await expect(item).toBeVisible();
   });
 });
