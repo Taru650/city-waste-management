@@ -12,9 +12,11 @@ services:
     # network. Move it with DB_PORT when Windows already has 5432 (e.g. a PostgreSQL installed there).
     ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cwm -d cwm"]
+      # Over TCP on purpose: on a fresh volume the image first runs a socket-only setup server (initdb,
+      # PostGIS), which a socket check reports as ready; migrate then got ECONNREFUSED on first start.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U cwm -d cwm"]
       interval: 5s
-      retries: 10
+      retries: 20
 
   redis:
     image: redis:7-alpine
