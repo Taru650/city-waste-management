@@ -99,7 +99,7 @@ cd ~/city-waste-management
 export POSTGRES_PASSWORD=dev-db-pass REDIS_PASSWORD=dev-redis-pass MINIO_ROOT_USER=minio MINIO_ROOT_PASSWORD=minio-dev-pass
 docker compose -f infra/docker-compose.yml up --build -d
 docker compose -f infra/docker-compose.yml ps        # wait until api is "healthy"
-curl -s localhost:3000/api/v1/health/ready           # {"status":"ok",…}
+curl -s localhost:3000/api/v1/health/ready           # {"status":"ready","db":true,"redis":true}
 ```
 Create the first Web Admin (mobile and email of your choice; the password must not contain either):
 ```bash
