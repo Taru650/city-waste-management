@@ -1,0 +1,256 @@
+name: CI
+
+# Branch pushes are covered by their pull request; running both doubled every CI run.
+on:
+  push:
+    branches: [main]
+    paths: ['apps/**', 'packages/**', 'infra/**', '.github/workflows/ci.yml']
+  workflow_dispatch:
+  pull_request:
+    paths: ['apps/**', 'packages/**', 'infra/**', '.github/workflows/ci.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/cwm_test
+      REDIS_URL: redis://localhost:6379/15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Media tooling (ffmpeg) and S3 emulator for tests (moto)
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+          python3 -m venv /opt/moto-venv && /opt/moto-venv/bin/pip install --quiet "moto[server]"
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Unit tests
+        run: npm run test:unit
+      - name: Integration tests
+        run: npx jest --runInBand --selectProjects e2e --testPathIgnorePatterns security
+      - name: Security tests
+        run: npm run test:security
+      - name: Backup and restore drill (on the data the tests left behind)
+        working-directory: .
+        run: |
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/cwm_test BACKUP_DIR="$RUNNER_TEMP/backups" bash infra/ops/backup.sh
+          ADMIN_URL=postgres://postgres:postgres@localhost:5432/postgres bash infra/ops/restore-drill.sh "$(ls "$RUNNER_TEMP"/backups/*.dump)"
+      - name: Dependency audit (production deps, high+)
+        run: npm run audit:prod
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      # The gitleaks CLI over the whole history (allowlist: .gitleaks.toml). The gitleaks action scans
+      # "<first PR commit>^..head" on pull requests, which fails when the PR contains the root commit.
+      - name: gitleaks (pinned release, checksum verified)
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tgz" https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
+          echo "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" git --redact --no-banner -v --exit-code 1 .
+
+  container-scan:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build -t cwm-api:ci apps/api
+      # Pinned by commit: in March 2026 76 of 77 trivy-action tags were force-pushed to credential-stealing
+      # code (GHSA-69fq-xp46-6x23); v0.35.0 was the unaffected release. Trivy v0.69.3 is a known-good binary.
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          version: v0.69.3
+          image-ref: cwm-api:ci
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+
+  web:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    env:
+      E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/cwm_e2e_test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+      - name: S3 emulator (moto) and redis-cli
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends redis-tools
+          python3 -m venv /opt/moto-venv && /opt/moto-venv/bin/pip install --quiet "moto[server]"
+      - name: Build API (the e2e suite runs the real API)
+        working-directory: apps/api
+        run: npm ci && npm run build
+      - working-directory: apps/web
+        run: npm ci
+      - working-directory: apps/web
+        run: npm run lint && npm run typecheck && npm test
+      - working-directory: apps/web
+        run: npm run build
+      - name: Dependency audit (production deps, high+)
+        working-directory: apps/web
+        run: npm run audit:prod
+      - name: Browser tests (Playwright, incl. portal security)
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium && npx playwright test
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+
+  mobile:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    env:
+      E2E_DATABASE_URL: postgres://postgres:postgres@localhost:5432/cwm_e2e_test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: 3.47.8
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/api/package-lock.json
+            apps/web/package-lock.json
+      - name: Analyze and unit/widget tests (flutter_core, Citizen app, Staff app)
+        run: |
+          set -e
+          for d in packages/flutter_core apps/mobile_citizen apps/mobile_staff; do
+            (cd "$d" && flutter pub get && flutter analyze && flutter test)
+          done
+      - name: S3 emulator (moto) and redis-cli
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends redis-tools
+          python3 -m venv /opt/moto-venv && /opt/moto-venv/bin/pip install --quiet "moto[server]"
+      - name: Contract test (Dart client against the real API)
+        run: |
+          (cd apps/api && npm ci && npm run build)
+          (cd apps/web && npm ci)
+          bash packages/flutter_core/tool/contract_test.sh
+      - name: No gallery / storage access in the shipped manifests
+        run: |
+          for m in apps/mobile_*/android/app/src/main/AndroidManifest.xml; do
+            grep -q 'READ_MEDIA_IMAGES" tools:node="remove"' "$m"
+            grep -q 'android:allowBackup="false"' "$m"
+            grep -q 'android:usesCleartextTraffic="false"' "$m"
+          done
+          ! grep -rE "image_picker|file_picker" apps/mobile_*/pubspec.yaml packages/flutter_core/pubspec.yaml
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      # The runner image ships the Android SDK (ANDROID_HOME, licences accepted); no third-party setup action.
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: 3.47.8
+          channel: stable
+          cache: true
+      - name: Kotlin type-check of the native code (no SDK needed; fails fast)
+        run: flutter precache --android && bash packages/flutter_core/tool/kotlin_check.sh
+      # The Flutter template lets each Gradle daemon take an 8 GB heap + 4 GB metaspace. With R8 and the
+      # Kotlin daemon that exhausted the runner's memory during the second APK build and the runner was
+      # killed ("received a shutdown signal", exit 143). User-level settings override the project's.
+      - name: Cap Gradle memory for the hosted runner
+        run: |
+          mkdir -p ~/.gradle
+          printf 'org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m -XX:+HeapDumpOnOutOfMemoryError\nkotlin.daemon.jvmargs=-Xmx1g\norg.gradle.workers.max=2\n' > ~/.gradle/gradle.properties
+          free -m
+      - name: Throwaway release keystore (real keys live only in the release pipeline)
+        run: |
+          keytool -genkeypair -keystore "$RUNNER_TEMP/ci.jks" -storepass ci-store-pass -keypass ci-store-pass -alias ci \
+            -keyalg RSA -keysize 2048 -validity 1 -dname "CN=CI"
+          for app in mobile_citizen mobile_staff; do
+            printf 'storeFile=%s\nstorePassword=ci-store-pass\nkeyAlias=ci\nkeyPassword=ci-store-pass\n' "$RUNNER_TEMP/ci.jks" > "apps/$app/android/key.properties"
+          done
+      - name: Build release APKs (R8 + resource shrinking)
+        run: |
+          set -e
+          for app in mobile_citizen mobile_staff; do
+            (cd "apps/$app" && flutter pub get && flutter build apk --release \
+              --dart-define=API_BASE_URL=https://api.example.invalid/api/v1 \
+              --dart-define=CERT_PINS=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=,BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB= \
+              --dart-define=PLAY_CLOUD_PROJECT_NUMBER=1)
+            (cd "apps/$app/android" && ./gradlew --stop) || true   # free the daemon's memory before the next app
+            free -m
+          done
+      - name: Merged APK permissions (camera-only evidence survives plugin manifest merging)
+        run: |
+          set -e
+          AAPT2=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/aapt2
+          for app in mobile_citizen mobile_staff; do
+            apk="apps/$app/build/app/outputs/flutter-apk/app-release.apk"
+            "$AAPT2" dump permissions "$apk" | tee "$RUNNER_TEMP/$app-perms.txt"
+            ! grep -E "READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|READ_MEDIA_|MANAGE_EXTERNAL_STORAGE" "$RUNNER_TEMP/$app-perms.txt"
+            grep -q "android.permission.CAMERA" "$RUNNER_TEMP/$app-perms.txt"
+            "$AAPT2" dump xmltree --file AndroidManifest.xml "$apk" | grep -E "allowBackup|usesCleartextTraffic" 
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: apks-ci-signed-not-for-release
+          path: apps/mobile_*/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7

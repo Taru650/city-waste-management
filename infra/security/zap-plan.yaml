@@ -1,0 +1,85 @@
+# OWASP ZAP automation plan: authenticated DAST of the API (all endpoints from the OpenAPI spec)
+# and the portal. Run with ./run-zap.sh (it starts the e2e environment and exports the tokens).
+# The API is reached through log-proxy.mjs (:3101 → :3100) so coverage is recorded.
+env:
+  contexts:
+    - name: api
+      urls: ["http://127.0.0.1:3101/api/v1"]
+      includePaths: ["http://127.0.0.1:3101/api/v1.*"]
+      # Endpoints that would end the scanner's own session or lock the test account.
+      excludePaths:
+        - ".*/auth/logout.*"
+        - ".*/auth/change-password.*"
+        - ".*/auth/mfa/.*"
+        - ".*/privacy/erasure.*"
+        - ".*/users/.*/(status|reset-password|reset-mfa).*"
+    - name: portal
+      urls: ["http://localhost:3200"]
+      includePaths: ["http://localhost:3200.*"]
+      excludePaths:
+        - ".*/bff/auth/logout.*"
+        - ".*/bff/api/auth/logout.*"
+        - ".*/bff/auth/change-password.*"
+        - ".*/bff/api/users/.*/(status|reset-password|reset-mfa).*"
+  parameters:
+    failOnError: true
+    progressToStdout: true
+jobs:
+  - type: replacer
+    parameters:
+      deleteAllRules: true
+    rules:
+      - description: "API bearer token (Sub Admin)"
+        url: "http://127.0.0.1:3101/.*"
+        matchType: req_header
+        matchString: Authorization
+        replacementString: "Bearer ${API_TOKEN}"
+      - description: "Portal session cookies (Sub Admin)"
+        url: "http://localhost:3200/.*"
+        matchType: req_header
+        matchString: Cookie
+        replacementString: "${PORTAL_COOKIE}"
+      - description: "Portal CSRF header"
+        url: "http://localhost:3200/.*"
+        matchType: req_header
+        matchString: x-cwm-csrf
+        replacementString: "1"
+  - type: openapi
+    parameters:
+      apiUrl: "http://127.0.0.1:3100/api/docs-json"
+      targetUrl: "http://127.0.0.1:3101"
+      context: api
+  - type: spider
+    parameters:
+      context: portal
+      url: "http://localhost:3200/dashboard"
+      maxDuration: 3
+  - type: spider
+    parameters:
+      context: portal
+      url: "http://localhost:3200/login"
+      maxDuration: 1
+  - type: passiveScan-wait
+    parameters:
+      maxDuration: 5
+  - type: activeScan
+    parameters:
+      context: api
+      maxScanDurationInMins: 25
+      threadPerHost: 4
+  - type: activeScan
+    parameters:
+      context: portal
+      maxScanDurationInMins: 15
+      threadPerHost: 4
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: "${REPORT_DIR}"
+      reportFile: zap-report.html
+      reportTitle: "Swachh Seva DAST (API + portal)"
+  - type: report
+    parameters:
+      template: traditional-json
+      reportDir: "${REPORT_DIR}"
+      reportFile: zap-report.json

@@ -1,0 +1,142 @@
+# Local development / pilot stack. Production: managed PostgreSQL with PITR, secrets from a vault,
+# TLS-terminating nginx + WAF in front of the API.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: cwm
+      POSTGRES_USER: cwm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: [dbdata:/var/lib/postgresql/data]
+    # Never expose the DB publicly. Host port only for local tools (psql); the API uses the internal
+    # network. Move it with DB_PORT when Windows already has 5432 (e.g. a PostgreSQL installed there).
+    ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
+    healthcheck:
+      # Over TCP on purpose: on a fresh volume the image first runs a socket-only setup server (initdb,
+      # PostGIS), which a socket check reports as ready; migrate then got ECONNREFUSED on first start.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U cwm -d cwm"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 5s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  minio:
+    # MinIO stopped publishing images (minio/minio and minio/mc are gone from Docker Hub). This is the
+    # community-maintained drop-in fork: same commands and settings. Local/pilot use only; production
+    # uses the state's managed S3-compatible storage. Pin by digest (image@sha256:...) when deploying.
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes: [miniodata:/data]
+    # Host ports can be moved (MINIO_PORT / MINIO_CONSOLE_PORT) when Windows has 9000 reserved or in use;
+    # S3_PUBLIC_ENDPOINT in apps/api/.env must then use the same port.
+    ports: ["127.0.0.1:${MINIO_PORT:-9000}:9000", "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"]
+
+  # Creates the private media bucket once.
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-10-25T00-00-00Z
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}; do sleep 1; done;
+      mc mb --ignore-existing local/cwm-media && mc anonymous set none local/cwm-media"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+
+  clamav:
+    image: clamav/clamav:1.4
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      retries: 20
+
+  api: &api
+    build: ../apps/api
+    env_file: ../apps/api/.env
+    environment: &api-env
+      PROCESS_ROLE: api
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      DATABASE_URL: postgres://cwm:${POSTGRES_PASSWORD}@db:5432/cwm
+      NODE_ENV: ${NODE_ENV:-development}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: cwm-media
+      S3_FORCE_PATH_STYLE: "true"
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      CLAMAV_HOST: clamav
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+      minio-init: { condition: service_completed_successfully }
+      clamav: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports: ["127.0.0.1:3000:3000"]
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    # A runaway request is killed and restarted instead of taking the host down. Measured headroom:
+    # a 50 000-row Excel export peaks at ~85 MB, and at most two run at once (export-slots.ts).
+    mem_limit: 1g
+    restart: unless-stopped
+
+  # Officials' web portal. Must sit behind the TLS/WAF proxy (nginx), never exposed directly:
+  # it forwards the client IP from X-Forwarded-For to the API for rate limits and audit logs.
+  web:
+    build: ../apps/web
+    environment:
+      API_URL: http://api:3000/api/v1
+      PORTAL_ORIGIN: ${PORTAL_ORIGIN:-http://localhost:3001}
+      MEDIA_ORIGINS: ${MEDIA_PUBLIC_ORIGIN:-http://localhost:${MINIO_PORT:-9000}}
+      MAP_TILE_URL: ${MAP_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
+    depends_on: [api]
+    ports: ["127.0.0.1:3001:3001"]
+    read_only: true
+    tmpfs: [/tmp, /app/.next/cache]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 512m
+    restart: unless-stopped
+
+  # Schema migrations before the API and workers start (idempotent; the image has no npm or ts-node).
+  # First Web Admin, once: docker compose run --rm -e SEED_ADMIN_MOBILE=… -e SEED_ADMIN_EMAIL=… \
+  #   -e SEED_ADMIN_PASSWORD=… migrate node dist/database/seed.js
+  migrate:
+    <<: *api
+    command: ["node", "dist/database/run-migrations.js"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+    ports: []
+    healthcheck:
+      disable: true
+
+  # Background jobs: video transcoding, push dispatch, SLA sweep, auto-close, media purge.
+  # Scale with `docker compose up --scale worker=N` for peak events.
+  worker:
+    <<: *api
+    command: ["node", "dist/worker.js"]
+    environment:
+      <<: *api-env
+      PROCESS_ROLE: worker
+    ports: []
+    healthcheck:
+      disable: true
+    # FFmpeg (720p H.264) and libvips run here, so more room than the API.
+    mem_limit: 2g
+
+volumes:
+  dbdata:
+  miniodata:
+  redisdata:
