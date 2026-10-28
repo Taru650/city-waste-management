@@ -295,7 +295,7 @@ A wrong or missing value stops the app at start-up and names the variable to fix
 npm test
 ```
 
-377 unit and integration tests against the dedicated `cwm_mvc_test` database (rebuilt on every run; it refuses any
+379 unit and integration tests against the dedicated `cwm_mvc_test` database (rebuilt on every run; it refuses any
 database whose name does not contain `test`). They cover login and sessions, every role's access, GPS routing, the
 complaint life cycle, media checks, SLA jobs, privacy, reports and the demo data. The security tests were mutation-checked
 (a control was deliberately broken to make sure a test fails).
