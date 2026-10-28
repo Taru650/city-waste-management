@@ -312,10 +312,14 @@ describe('rate limiting and client addresses', () => {
   });
 
   it('production refuses to start with insecure cookies or without a declared proxy', () => {
-    const base = { NODE_ENV: 'production', JWT_ACCESS_SECRET: 'x'.repeat(40), PII_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'), PII_HASH_KEY: Buffer.alloc(32, 2).toString('base64'), DB_PASSWORD: 'x', APP_URL: 'https://example.in' };
+    const base = { NODE_ENV: 'production', JWT_ACCESS_SECRET: 'x'.repeat(40), PII_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'), PII_HASH_KEY: Buffer.alloc(32, 2).toString('base64'), DB_PASSWORD: 'x', APP_URL: 'https://example.in', GRIEVANCE_OFFICER_NAME: 'Grievance Officer', GRIEVANCE_OFFICER_EMAIL: 'go@example.gov.in' };
     expect(() => buildConfig({ ...base, COOKIE_SECURE: 'false', TRUST_PROXY_HOPS: '1' } as NodeJS.ProcessEnv)).toThrow(/COOKIE_SECURE/);
     expect(() => buildConfig({ ...base, COOKIE_SECURE: 'true', TRUST_PROXY_HOPS: '0' } as NodeJS.ProcessEnv)).toThrow(/TRUST_PROXY_HOPS/);
     expect(() => buildConfig({ ...base, COOKIE_SECURE: 'true', TRUST_PROXY_HOPS: '1' } as NodeJS.ProcessEnv)).not.toThrow();
+    // the privacy notice must name a grievance officer in production
+    const ok = { ...base, COOKIE_SECURE: 'true', TRUST_PROXY_HOPS: '1' };
+    expect(() => buildConfig({ ...ok, GRIEVANCE_OFFICER_EMAIL: '' } as NodeJS.ProcessEnv)).toThrow(/GRIEVANCE_OFFICER/);
+    expect(() => buildConfig({ ...ok, GRIEVANCE_OFFICER_NAME: '' } as NodeJS.ProcessEnv)).toThrow(/GRIEVANCE_OFFICER/);
   });
 
   it('weak or missing secrets stop the app from starting', () => {

@@ -183,14 +183,18 @@ describe('the background jobs', () => {
     const names = (await query<{ name: string }>(db(), `SELECT name FROM jobs WHERE status = 'PENDING' ORDER BY name`)).map((r) => r.name);
     expect(names).toEqual(['auto-close', 'privacy-purge', 'prune-jobs', 'purge-media', 'push-dispatch', 'requeue-videos', 'sla-sweep', 'zone-handover']);
 
-    // eight timed jobs, plus the push dispatch that the SLA sweep queued for the notifications it wrote
-    expect(await runner.runDue({ exclude: ['video'] })).toBe(9);
+    // The eight timed jobs run once each. Doing their work may also queue push dispatches (the SLA sweep and the zone
+    // handover both write notifications, and earlier test files can leave zones to hand over), so those are not counted.
+    const ran = await runner.runDue({ exclude: ['video'] });
+    expect(ran).toBeGreaterThanOrEqual(9);
     expect((await row(id))!.sla_breached_at).toBeTruthy(); // the SLA job did its work
-    const done = (await query<{ name: string }>(db(), `SELECT name FROM jobs WHERE status = 'DONE' ORDER BY name`)).map((r) => r.name);
-    expect(done).toEqual(['auto-close', 'dispatch', 'privacy-purge', 'prune-jobs', 'purge-media', 'push-dispatch', 'requeue-videos', 'sla-sweep', 'zone-handover']);
-    const next = await query<{ name: string; far: number }>(db(), `SELECT name, run_at > DATE_ADD(NOW(3), INTERVAL 20 SECOND) AS far FROM jobs WHERE status = 'PENDING'`);
-    expect(next).toHaveLength(8);
+    const timed = ['auto-close', 'privacy-purge', 'prune-jobs', 'purge-media', 'push-dispatch', 'requeue-videos', 'sla-sweep', 'zone-handover'];
+    const doneTimed = await query<{ name: string }>(db(), `SELECT name FROM jobs WHERE status = 'DONE' AND dedupe_key LIKE 'periodic:%' ORDER BY name`);
+    expect(doneTimed.map((r) => r.name)).toEqual(timed); // each exactly once
+    const next = await query<{ name: string; far: number }>(db(), `SELECT name, run_at > DATE_ADD(NOW(3), INTERVAL 20 SECOND) AS far FROM jobs WHERE status = 'PENDING' AND dedupe_key LIKE 'periodic:%' ORDER BY name`);
+    expect(next.map((n) => n.name)).toEqual(timed); // each rescheduled once
     expect(next.every((n) => n.far)).toBe(true);
+    await runner.runDue({ exclude: ['video'] }); // any push dispatch queued by the jobs above
     expect(await runner.runDue({ exclude: ['video'] })).toBe(0);
   });
 
