@@ -71,7 +71,7 @@ function errorResponse(err: unknown): Response {
     const headers: Record<string, string> = {};
     const retry = (err as { retryAfter?: number }).retryAfter;
     if (retry) headers['Retry-After'] = String(retry);
-    return json(bodyShape(err.status, err.message, err.code ? { code: err.code } : {}), { status: err.status, headers });
+    return json(bodyShape(err.status, err.message, { ...(err.code ? { code: err.code } : {}), ...(err.extra ?? {}) }), { status: err.status, headers });
   }
   if (isDbUnavailable(err)) {
     console.error('[api] database unavailable:', (err as Error).message);

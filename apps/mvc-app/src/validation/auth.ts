@@ -9,7 +9,7 @@ export const sessionMode = z.enum(['token', 'cookie']).default('token');
 export type SessionMode = z.infer<typeof sessionMode>;
 
 /** Sent by the apps with some requests; this edition accepts and ignores them (no CAPTCHA, no Play Integrity). */
-const ignored = {
+export const ignored = {
   captchaToken: z.string().max(4096).optional(),
   attestationChallenge: z.string().max(300).optional(),
   integrityToken: z.string().max(8192).optional(),

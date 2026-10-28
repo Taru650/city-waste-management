@@ -9,3 +9,4 @@ playwright-report/
 *.tsbuildinfo
 next-env.d.ts
 AGENTS.md
+storage-test/

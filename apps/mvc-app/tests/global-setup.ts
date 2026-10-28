@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { rmSync } from 'node:fs';
 import path from 'node:path';
 
 /**
@@ -14,6 +15,7 @@ export default async function setup() {
     PII_HASH_KEY: Buffer.alloc(32, 9).toString('base64'),
   });
   const cfg = getConfig();
+  rmSync(path.resolve(__dirname, '..', 'storage-test'), { recursive: true, force: true }); // files of the previous run
   if (!/test/i.test(cfg.db.name)) throw new Error(`Refusing to run tests against "${cfg.db.name}": set DB_TEST_NAME to a database with "test" in its name.`);
 
   const { default: knex } = await import('knex');

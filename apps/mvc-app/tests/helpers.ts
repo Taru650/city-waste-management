@@ -20,6 +20,8 @@ type RouteFn = (req: Request, ctx?: { params: Promise<Record<string, string>> })
 export interface CallOptions {
   body?: unknown;
   rawBody?: string;
+  /** A binary body (file uploads). */
+  rawBytes?: Buffer;
   token?: string;
   cookies?: Record<string, string>;
   headers?: Record<string, string>;
@@ -42,13 +44,14 @@ export async function call<T = any>(fn: RouteFn, method: string, path: string, o
   if (!headers.has('host')) headers.set('host', new URL(BASE).host); // a real request always carries Host
   if (o.token) headers.set('authorization', `Bearer ${o.token}`);
   if (o.cookies) headers.set('cookie', Object.entries(o.cookies).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('; '));
-  let body: string | undefined;
-  if (o.rawBody !== undefined) body = o.rawBody;
+  let body: string | Uint8Array | undefined;
+  if (o.rawBytes !== undefined) body = new Uint8Array(o.rawBytes);
+  else if (o.rawBody !== undefined) body = o.rawBody;
   else if (o.body !== undefined) {
     body = JSON.stringify(o.body);
     if (!headers.has('content-type')) headers.set('content-type', 'application/json');
   }
-  const res = await fn(new Request(url, { method, headers, body }), { params: Promise.resolve(o.params ?? {}) });
+  const res = await fn(new Request(url, { method, headers, body: body as BodyInit | undefined }), { params: Promise.resolve(o.params ?? {}) });
   const text = await res.text();
   let parsed: unknown = text;
   try {

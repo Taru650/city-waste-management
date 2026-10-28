@@ -4,6 +4,8 @@ export class HttpError extends Error {
     public readonly status: number,
     message: string,
     public readonly code?: string,
+    /** Extra fields for the JSON error body (for example mediaStatus). */
+    public readonly extra?: Record<string, unknown>,
   ) {
     super(message);
   }
