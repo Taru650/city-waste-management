@@ -3,6 +3,7 @@
  * Run through npm:  npm run db:migrate | db:rollback | db:status | db:seed | db:reset | db:guards
  */
 import knex, { Knex } from 'knex';
+import { rmSync } from 'node:fs';
 import path from 'node:path';
 import { getConfig } from '../src/config/env';
 import { connectionSettings } from '../src/db/connection';
@@ -100,6 +101,8 @@ async function main() {
         const [tables] = (await k.raw('SHOW FULL TABLES WHERE Table_type = "BASE TABLE"')) as unknown as [Record<string, string>[]];
         for (const t of tables) await k.raw('DROP TABLE IF EXISTS ??', [Object.values(t)[0]]);
         await k.raw('SET FOREIGN_KEY_CHECKS = 1');
+        // The photos and videos of the dropped rows would only be orphans: clear the two folders the app writes them to.
+        for (const dir of ['media', 'staging']) rmSync(path.resolve(c.storageDir, dir), { recursive: true, force: true });
         const [, applied] = await k.migrate.latest();
         console.log(`Applied ${applied.length} migrations.`);
         const [files] = await k.seed.run();

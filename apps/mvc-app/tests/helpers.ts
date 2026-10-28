@@ -112,8 +112,8 @@ export async function createJurisdiction(): Promise<Jurisdiction> {
   const n = r.insertId;
   const lat = 10 + Math.floor(n / 50) * 0.1;
   const lng = 70 + (n % 50) * 0.1;
-  const districtLgd = 1000 + n;
-  const ulbLgd = 800000 + n;
+  const districtLgd = 2000 + n; // clear of the demo data (1001, 1002) and of the 5000+ codes the masters tests create
+  const ulbLgd = 810000 + n; // clear of the demo data (800001, 800002, 800101)
   const districtId = newId();
   const ulbId = newId();
   await run(db(), `INSERT INTO districts (id, lgd_code, name) VALUES (?,?,?)`, [districtId, districtLgd, `District ${n}`]);
