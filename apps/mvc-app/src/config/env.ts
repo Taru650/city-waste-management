@@ -46,6 +46,16 @@ const schema = z.object({
   MEDIA_MAX_CAPTURE_AGE_HOURS: int(24, 1),
   MEDIA_MAX_GPS_ACCURACY_M: int(100, 1),
   VIDEO_MAX_SECONDS: int(30, 1),
+  /** Optional: full path to ffmpeg/ffprobe. Without them videos are stored as uploaded (no re-encode, no thumbnail). */
+  FFMPEG_PATH: z.string().default(''),
+  FFPROBE_PATH: z.string().default(''),
+  /** Optional ClamAV daemon. Without it uploads are checked for the EICAR test signature only. */
+  CLAMAV_HOST: z.string().default(''),
+  CLAMAV_PORT: int(3310, 1, 65535),
+
+  /** Optional push notifications: the Firebase service-account JSON (one line). Empty = in-app notifications only. */
+  FCM_SERVICE_ACCOUNT_JSON: z.string().default(''),
+  FCM_API_BASE: z.string().url().default('https://fcm.googleapis.com'),
 
   MAIL_TRANSPORT: z.enum(['log', 'smtp']).default('log'),
   SMTP_URL: z.string().default(''),
@@ -100,7 +110,11 @@ function build(env: NodeJS.ProcessEnv) {
       maxCaptureAgeHours: e.MEDIA_MAX_CAPTURE_AGE_HOURS,
       maxGpsAccuracyM: e.MEDIA_MAX_GPS_ACCURACY_M,
       videoMaxSeconds: e.VIDEO_MAX_SECONDS,
+      ffmpegPath: e.FFMPEG_PATH || 'ffmpeg',
+      ffprobePath: e.FFPROBE_PATH || 'ffprobe',
     },
+    clamav: { host: e.CLAMAV_HOST, port: e.CLAMAV_PORT },
+    fcm: { serviceAccountJson: e.FCM_SERVICE_ACCOUNT_JSON, apiBase: e.FCM_API_BASE.replace(/\/$/, '') },
     mail: { transport: e.MAIL_TRANSPORT, smtpUrl: e.SMTP_URL, from: e.MAIL_FROM },
     passwordResetUrl: `${e.APP_URL.replace(/\/$/, '')}/reset-password`,
     demoCenter: { lat: e.DEMO_CENTER_LAT, lng: e.DEMO_CENTER_LNG },
