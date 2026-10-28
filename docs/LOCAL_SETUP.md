@@ -101,6 +101,23 @@ docker compose -f infra/docker-compose.yml up --build -d
 docker compose -f infra/docker-compose.yml ps        # wait until api is "healthy"
 curl -s localhost:3000/api/v1/health/ready           # {"status":"ready","db":true,"redis":true}
 ```
+**Do not retype the `export` line in every terminal.** It only lasts for that one window, and a new
+window fails with `required variable POSTGRES_PASSWORD is missing a value`. Save the same settings
+once in `infra/.env` (git ignores it, and Compose reads it automatically):
+```bash
+cat > infra/.env <<'EOF'
+POSTGRES_PASSWORD=dev-db-pass
+REDIS_PASSWORD=dev-redis-pass
+MINIO_ROOT_USER=minio
+MINIO_ROOT_PASSWORD=minio-dev-pass
+# only if Windows holds the default ports (see "When something fails"):
+# MINIO_PORT=9100
+# MINIO_CONSOLE_PORT=9101
+# DB_PORT=5433
+EOF
+```
+Keep the passwords the same as the first run: the database keeps the one it was created with.
+
 Create the first Web Admin (mobile and email of your choice; the password must not contain either):
 ```bash
 docker compose -f infra/docker-compose.yml run --rm -e SEED_ADMIN_MOBILE=9876500001 \
