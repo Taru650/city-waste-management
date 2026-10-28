@@ -10,9 +10,9 @@ import { POST as resetPassword } from '@/app/api/v1/auth/reset-password/route';
 import { GET as me } from '@/app/api/v1/auth/me/route';
 import { PATCH as preferences } from '@/app/api/v1/auth/me/preferences/route';
 import { NOTICE_VERSION } from '@/lib/notice';
-import { PASSWORD, browser, call, captureMail, cookieJar, createJurisdiction, createUser, db, one, query, run, uniqueMobile, useTestEnvironment, type Jurisdiction } from './helpers';
+import { PASSWORD, browser, call, captureMail, cookieJar, createJurisdiction, createUser, db, one, query, run, uniqueMobile, setupTestEnvironment, type Jurisdiction } from './helpers';
 
-useTestEnvironment();
+setupTestEnvironment();
 
 let j: Jurisdiction;
 beforeAll(async () => {

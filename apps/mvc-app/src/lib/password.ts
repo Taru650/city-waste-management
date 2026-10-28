@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import { hash, verify } from '@node-rs/argon2';
 import { badRequest } from '@/lib/errors';
 import { newOpaqueToken } from '@/lib/crypto';
@@ -36,4 +37,14 @@ export function assertStrongPassword(password: string, context: { mobile?: strin
   const emailUser = context.email?.split('@')[0];
   if (emailUser && emailUser.length >= 4 && password.toLowerCase().includes(emailUser.toLowerCase())) problems.push('must not contain your email name');
   if (problems.length) throw badRequest(`Password ${problems.join(', ')}`);
+}
+
+const TEMP_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'; // no look-alike characters (0/O, 1/l/I)
+
+/** 12-character temporary password with at least one letter and one digit; shown once to the admin who issued it. */
+export function generateTempPassword(): string {
+  for (;;) {
+    const pw = Array.from({ length: 12 }, () => TEMP_ALPHABET[randomInt(TEMP_ALPHABET.length)]).join('');
+    if (/[A-Za-z]/.test(pw) && /\d/.test(pw)) return pw;
+  }
 }

@@ -9,9 +9,9 @@ import { GET as health } from '@/app/api/v1/health/route';
 import { buildConfig, getConfig, resetConfigForTests } from '@/config/env';
 import { UserModel } from '@/models/UserModel';
 import { newId } from '@/lib/ids';
-import { BASE, PASSWORD, browser, call, cookieJar, createJurisdiction, createUser, db, one, run, useTestEnvironment, type Jurisdiction } from './helpers';
+import { BASE, PASSWORD, browser, call, cookieJar, createJurisdiction, createUser, db, one, run, setupTestEnvironment, type Jurisdiction } from './helpers';
 
-useTestEnvironment();
+setupTestEnvironment();
 
 let j: Jurisdiction;
 beforeAll(async () => {

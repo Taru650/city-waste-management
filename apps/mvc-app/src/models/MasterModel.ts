@@ -2,6 +2,7 @@ import type { Db } from '@/db/sql';
 import { one, query, run } from '@/db/sql';
 import type { GeoJsonPolygon } from '@/lib/geo';
 import type { UlbType } from '@/lib/enums';
+import { isGeometryError } from '@/lib/errors';
 
 const GEOM = `ST_GeomFromGeoJSON(?, 1, 4326)`;
 
@@ -40,7 +41,8 @@ export const UlbModel = {
 
 export interface WardOverlap {
   number: number;
-  overlapM2: number;
+  /** null: the database could not compute the overlap (edges almost, but not exactly, coincide). */
+  overlapM2: number | null;
 }
 
 export const WardModel = {
@@ -112,11 +114,15 @@ export const WardModel = {
    * MySQL returns a geographic intersection as a collection of parts (stray points, lines and the
    * polygons), so the area is summed over the polygon parts only. Done here, not in a stored function:
    * MySQL refuses to create functions without SUPER when binary logging is on.
+   *
+   * Known limit (measured): when two edges differ by less than about 10 cm the geodesic intersection is not
+   * reliable (MySQL raises an error or returns a whole-ward area), so such a pair is reported as overlapping
+   * with an unknown area and the upload is refused. Edges that coincide exactly (shared vertices) are fine.
    */
   async overlaps(d: Db, wardId: string, toleranceM2: number): Promise<WardOverlap[]> {
-    const candidates = await query<{ number: number; gj: string | null }>(
+    const candidates = await query<{ id: string; number: number }>(
       d,
-      `SELECT o.number, ST_AsGeoJSON(ST_Intersection(wb.geom, ob.geom)) AS gj
+      `SELECT o.id, o.number
          FROM wards w
          JOIN ward_boundaries wb ON wb.ward_id = w.id
          JOIN wards o ON o.ulb_id = w.ulb_id AND o.id <> w.id AND o.active
@@ -126,18 +132,35 @@ export const WardModel = {
     );
     const out: WardOverlap[] = [];
     for (const c of candidates) {
-      if (!c.gj) continue;
-      const geo = typeof c.gj === 'string' ? JSON.parse(c.gj) : c.gj;
-      const parts: { type: string }[] = geo.type === 'GeometryCollection' ? geo.geometries : [geo];
-      let total = 0;
-      for (const p of parts) {
-        if (p.type !== 'Polygon' && p.type !== 'MultiPolygon') continue;
-        const r = await one<{ a: number }>(d, `SELECT ST_Area(${GEOM}) AS a`, [JSON.stringify(p)]);
-        total += r?.a ?? 0;
+      let total: number | null;
+      try {
+        total = await WardModel.intersectionArea(d, wardId, c.id);
+      } catch (err) {
+        if (!isGeometryError(err)) throw err;
+        total = null;
       }
-      if (total > toleranceM2) out.push({ number: c.number, overlapM2: Math.round(total) });
+      if (total === null || total > toleranceM2) out.push({ number: c.number, overlapM2: total === null ? null : Math.round(total) });
     }
-    return out.sort((a, b) => b.overlapM2 - a.overlapM2 || a.number - b.number).slice(0, 5);
+    return out.sort((a, b) => (b.overlapM2 ?? Infinity) - (a.overlapM2 ?? Infinity) || a.number - b.number).slice(0, 5);
+  },
+
+  /** Geodesic area in m² shared by two ward boundaries (polygon parts of the intersection only). */
+  async intersectionArea(d: Db, wardId: string, otherId: string): Promise<number> {
+    const r = await one<{ gj: unknown }>(
+      d,
+      `SELECT ST_AsGeoJSON(ST_Intersection(a.geom, b.geom)) AS gj FROM ward_boundaries a, ward_boundaries b WHERE a.ward_id = ? AND b.ward_id = ?`,
+      [wardId, otherId],
+    );
+    if (!r?.gj) return 0;
+    const geo = (typeof r.gj === 'string' ? JSON.parse(r.gj) : r.gj) as { type: string; geometries?: { type: string }[] };
+    const parts = geo.type === 'GeometryCollection' ? (geo.geometries ?? []) : [geo];
+    let total = 0;
+    for (const p of parts) {
+      if (p.type !== 'Polygon' && p.type !== 'MultiPolygon') continue;
+      const a = await one<{ a: number }>(d, `SELECT ST_Area(${GEOM}) AS a`, [JSON.stringify(p)]);
+      total += a?.a ?? 0;
+    }
+    return total;
   },
 
   /** Serialises boundary changes of one ULB, so two overlapping uploads cannot both pass the overlap check. */

@@ -2,7 +2,7 @@ import type { Knex } from 'knex';
 
 /** Either the pool or an open transaction: models take this so services can group them. */
 export type Db = Knex | Knex.Transaction;
-export type Row = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+export type Row = Record<string, any>;  
 
 /** SELECT: all rows. Placeholders are `?`; arrays expand for IN (?). */
 export async function query<T = Row>(d: Db, sql: string, params: readonly unknown[] = []): Promise<T[]> {

@@ -9,6 +9,7 @@ import type { Role } from '@/lib/enums';
 import { resetRateLimitsForTests } from '@/middleware/rateLimit';
 import { setMailSender } from '@/lib/mail';
 import { UserModel } from '@/models/UserModel';
+import { POST as loginRoute } from '@/app/api/v1/auth/login/route';
 import { afterAll, beforeEach } from 'vitest';
 
 export const PASSWORD = 'Swachh#Test2026';
@@ -26,7 +27,7 @@ export interface CallOptions {
   params?: Record<string, string>;
 }
 
-export interface Reply<T = any> { // eslint-disable-line @typescript-eslint/no-explicit-any
+export interface Reply<T = any> {  
   status: number;
   body: T;
   headers: Headers;
@@ -34,7 +35,7 @@ export interface Reply<T = any> { // eslint-disable-line @typescript-eslint/no-e
 }
 
 /** Calls a route handler exactly as Next.js would, without starting a server. */
-export async function call<T = any>(fn: RouteFn, method: string, path: string, o: CallOptions = {}): Promise<Reply<T>> { // eslint-disable-line @typescript-eslint/no-explicit-any
+export async function call<T = any>(fn: RouteFn, method: string, path: string, o: CallOptions = {}): Promise<Reply<T>> {  
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(o.query ?? {})) url.searchParams.set(k, String(v));
   const headers = new Headers(o.headers ?? {});
@@ -151,6 +152,13 @@ export async function createUser(
   return { id, role, mobile, email, password: PASSWORD };
 }
 
+/** Signs a test user in the way an app does and returns the access token. */
+export async function loginAs(u: TestUser, password = u.password): Promise<string> {
+  const res = await call(loginRoute, 'POST', '/api/v1/auth/login', { body: { identifier: u.mobile, password } });
+  if (res.status !== 200) throw new Error(`test login failed for ${u.role}: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.accessToken as string;
+}
+
 /** Captures outgoing mail for the current test. */
 export function captureMail() {
   const sent: { to: string; subject: string; text: string }[] = [];
@@ -161,7 +169,7 @@ export function captureMail() {
 export { db, one, query, run };
 
 /** Common hooks: clear rate limits and mail between tests, close the pool at the end of the file. */
-export function useTestEnvironment() {
+export function setupTestEnvironment() {
   beforeEach(() => {
     resetRateLimitsForTests();
     setMailSender(undefined);

@@ -36,3 +36,9 @@ export function isDbUnavailable(err: unknown): boolean {
 export function isDuplicateKey(err: unknown): boolean {
   return (err as { code?: string })?.code === 'ER_DUP_ENTRY';
 }
+
+/** MySQL rejected a geometry (invalid GeoJSON, bad ring, or an operation it cannot compute robustly). */
+export function isGeometryError(err: unknown): boolean {
+  const e = err as { code?: string; message?: string } | undefined;
+  return /GIS|GEOJSON|GEOMETRY|SRS|ST_/i.test(`${e?.code ?? ''} ${e?.message ?? ''}`);
+}
