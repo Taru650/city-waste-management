@@ -5,22 +5,42 @@ import { getConfig } from '@/config/env';
 export const FILE_URL_TTL_SECONDS = 300;
 export type Variant = 'main' | 'thumb';
 
-function sign(id: string, variant: Variant, exp: number): string {
-  // A key derived from the JWT secret (so it needs no extra setting) but not usable as a JWT key.
-  const key = createHmac('sha256', getConfig().jwtAccessSecret).update('media-file-url').digest();
-  return createHmac('sha256', key).update(`${id}.${variant}.${exp}`).digest('hex');
+/** Keys derived from the JWT secret (so they need no extra setting) but not usable as JWT keys, one per purpose. */
+function sign(purpose: 'media-file-url' | 'media-upload-url', message: string): string {
+  const key = createHmac('sha256', getConfig().jwtAccessSecret).update(purpose).digest();
+  return createHmac('sha256', key).update(message).digest('hex');
+}
+
+function sameSignature(expected: string, given: string): boolean {
+  const a = Buffer.from(expected, 'hex');
+  const b = /^[0-9a-f]+$/i.test(given) ? Buffer.from(given, 'hex') : Buffer.alloc(0);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export function signedFileUrl(origin: string, id: string, variant: Variant): string {
   const exp = Math.floor(Date.now() / 1000) + FILE_URL_TTL_SECONDS;
-  return `${origin}/api/v1/media/${id}/file?v=${variant}&exp=${exp}&sig=${sign(id, variant, exp)}`;
+  return `${origin}/api/v1/media/${id}/file?v=${variant}&exp=${exp}&sig=${sign('media-file-url', `${id}.${variant}.${exp}`)}`;
 }
 
 export function verifyFileUrl(id: string, variant: string, exp: string, sig: string): boolean {
   if (variant !== 'main' && variant !== 'thumb') return false;
   const e = Number(exp);
   if (!Number.isInteger(e) || e < Math.floor(Date.now() / 1000)) return false;
-  const expected = Buffer.from(sign(id, variant, e), 'hex');
-  const given = Buffer.from(sig, 'hex');
-  return given.length === expected.length && timingSafeEqual(given, expected);
+  return sameSignature(sign('media-file-url', `${id}.${variant}.${e}`), sig);
+}
+
+/**
+ * Where an app sends the bytes of one declared photo or video: like a storage "presigned URL", the address itself is
+ * the credential. It is tied to one declared upload and stops working after `ttlSeconds`. (What the file may contain
+ * is still enforced: exact type and size, and at confirm time the signed capture manifest and the checksum.)
+ */
+export function signedUploadUrl(origin: string, id: string, ttlSeconds: number): string {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  return `${origin}/api/v1/media/${id}/content?exp=${exp}&sig=${sign('media-upload-url', `${id}.${exp}`)}`;
+}
+
+export function verifyUploadUrl(id: string, exp: string | null, sig: string | null): boolean {
+  const e = Number(exp);
+  if (!exp || !sig || !Number.isInteger(e) || e < Math.floor(Date.now() / 1000)) return false;
+  return sameSignature(sign('media-upload-url', `${id}.${e}`), sig);
 }

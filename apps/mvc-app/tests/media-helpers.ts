@@ -96,6 +96,9 @@ export interface UploadResult {
   confirm?: Reply;
 }
 
+/** The path and query of a full URL (the test client calls route handlers directly). */
+export const pathOf = (url: string) => { const u = new URL(url); return `${u.pathname}${u.search}`; };
+
 /** The whole camera-evidence flow as an app does it: declare, PUT the bytes, confirm with a signed manifest. */
 export async function uploadMedia(token: string, device: TestDevice, data: Buffer, o: UploadOptions = {}): Promise<UploadResult> {
   const kind = o.kind ?? 'PHOTO';
@@ -109,7 +112,8 @@ export async function uploadMedia(token: string, device: TestDevice, data: Buffe
   const result: UploadResult = { mediaId, declared };
   if (!o.skipPut) {
     const sent = o.sent ?? data;
-    result.put = await call(putContent, 'PUT', `/api/v1/media/${mediaId}/content`, { token, params: { id: mediaId }, rawBytes: sent, headers: { 'content-type': contentType } });
+    // As an app does: the declared upload URL is the only credential for this step (no token is sent).
+    result.put = await call(putContent, 'PUT', pathOf(declared.body.uploadUrl), { params: { id: mediaId }, rawBytes: sent, headers: { 'content-type': contentType } });
   }
   if (!o.skipConfirm) {
     let manifest: CaptureManifest = {

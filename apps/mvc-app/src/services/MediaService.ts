@@ -5,13 +5,13 @@ import type { Db } from '@/db/sql';
 import { getConfig } from '@/config/env';
 import { JobQueue, QUEUES } from '@/jobs/queue';
 import { CaptureManifest, ManifestError, parseDevicePublicKey, verifyManifest } from '@/lib/captureManifest';
-import { HttpError, badRequest, conflict, isDuplicateKey, notFound, tooMany, unavailable } from '@/lib/errors';
+import { HttpError, badRequest, conflict, isDuplicateKey, notFound, tooMany, unauthorized, unavailable } from '@/lib/errors';
 import { detectType } from '@/lib/fileSignature';
 import { newId } from '@/lib/ids';
 import { scan } from '@/lib/malware';
 import { MediaProcessingError, processPhoto, processVideo } from '@/lib/mediaProcessor';
 import { templates } from '@/lib/notificationTemplates';
-import { signedFileUrl, verifyFileUrl } from '@/lib/signedUrl';
+import { signedFileUrl, signedUploadUrl, verifyFileUrl, verifyUploadUrl } from '@/lib/signedUrl';
 import { Storage } from '@/lib/storage';
 import { AuditModel } from '@/models/AuditModel';
 import { DeviceModel } from '@/models/DeviceModel';
@@ -61,16 +61,20 @@ export const MediaService = {
     await MediaModel.insertPending(db(), { id, ownerId: user.id, deviceId: device.id, kind: v.kind, contentType: v.contentType, bytes: v.bytes, sha256: v.sha256 });
     return {
       mediaId: id,
-      uploadUrl: `${origin}/api/v1/media/${id}/content`,
+      uploadUrl: signedUploadUrl(origin, id, CONFIRM_WINDOW_MINUTES * 60),
       method: 'PUT',
       headers: { 'Content-Type': v.contentType, 'Content-Length': String(v.bytes) },
       expiresInSeconds: CONFIRM_WINDOW_MINUTES * 60,
     };
   },
 
-  /** Receives the file bytes for a declared upload. The declared type and size are enforced exactly. */
-  async receiveUpload(user: AuthUser, id: string, req: Request): Promise<void> {
-    const media = await MediaModel.findAwaitingUpload(db(), id, user.id, CONFIRM_WINDOW_MINUTES);
+  /**
+   * Receives the file bytes for a declared upload. The caller proves itself with the signed address handed out
+   * when the upload was declared; the declared type and size are enforced exactly.
+   */
+  async receiveUpload(id: string, exp: string | null, sig: string | null, req: Request): Promise<void> {
+    if (!verifyUploadUrl(id, exp, sig)) throw unauthorized();
+    const media = await MediaModel.findAwaitingUpload(db(), id, CONFIRM_WINDOW_MINUTES);
     if (!media) throw notFound('Media not found');
     if (media.status !== 'PENDING_UPLOAD') throw conflict(`Media is already ${media.status}`);
     if (media.expired) throw new HttpError(410, 'Upload window has expired; start again');

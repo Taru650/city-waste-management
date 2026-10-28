@@ -42,3 +42,6 @@ export const changePasswordSchema = z.object({ currentPassword: password, newPas
 export const forgotPasswordSchema = z.object({ identifier: z.string().trim().min(3).max(120), ...ignored }).strict();
 export const resetPasswordSchema = z.object({ token: z.string().min(20).max(200), newPassword: password }).strict();
 export const preferencesSchema = z.object({ preferredLanguage: z.enum(['hi', 'en']) }).strict();
+
+/** What the apps send to ask whether attestation is needed (see AttestationController). */
+export const attestationChallengeSchema = z.object({ purpose: z.enum(['register', 'forgot-password', 'device']) }).strict();

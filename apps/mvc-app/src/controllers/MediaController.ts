@@ -22,8 +22,9 @@ export const MediaController = {
     return new ApiResult(await MediaService.createUpload(user, body as never, expectedOrigin(req)), { status: 201 });
   },
 
-  async upload({ user, params, req }: Ctx<undefined, undefined, P>) {
-    await MediaService.receiveUpload(user, uuidParam(params.id), req);
+  async upload({ params, req }: Ctx<undefined, undefined, P>) {
+    const url = new URL(req.url);
+    await MediaService.receiveUpload(uuidParam(params.id), url.searchParams.get('exp'), url.searchParams.get('sig'), req);
     return new ApiResult(null, { status: 204 });
   },
 

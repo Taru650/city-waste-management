@@ -49,12 +49,12 @@ export const MediaModel = {
   },
 
   /** For the upload step: the caller's own media still waiting for its file. */
-  async findAwaitingUpload(d: Db, id: string, ownerId: string, windowMinutes: number) {
+  async findAwaitingUpload(d: Db, id: string, windowMinutes: number) {
     const r = await one<{ id: string; status: string; content_type: string; declared_bytes: number; staging_key: string; expired: number }>(
       d,
       `SELECT id, status, content_type, declared_bytes, staging_key, created_at < DATE_SUB(NOW(3), INTERVAL ? MINUTE) AS expired
-         FROM complaint_media WHERE id = ? AND owner_id = ?`,
-      [windowMinutes, id, ownerId],
+         FROM complaint_media WHERE id = ?`,
+      [windowMinutes, id],
     );
     return r && { ...r, expired: !!r.expired };
   },

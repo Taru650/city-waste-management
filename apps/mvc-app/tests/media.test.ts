@@ -10,11 +10,11 @@ import { GET as fileRoute } from '@/app/api/v1/media/[id]/file/route';
 import { JobRunner } from '@/jobs/runner';
 import { resetConfigForTests } from '@/config/env';
 import { newId } from '@/lib/ids';
-import { FILE_URL_TTL_SECONDS, signedFileUrl } from '@/lib/signedUrl';
+import { FILE_URL_TTL_SECONDS, signedFileUrl, signedUploadUrl } from '@/lib/signedUrl';
 import { Storage } from '@/lib/storage';
 import { MediaService } from '@/services/MediaService';
 import { call, createJurisdiction, createUser, db, loginAs, one, query, run, setupTestEnvironment, type Jurisdiction } from './helpers';
-import { hasTool, makeDevice, makeJpeg, makeMp4, makeWebp, newKeyPair, sha256, signManifest, uploadMedia } from './media-helpers';
+import { hasTool, makeDevice, makeJpeg, makeMp4, makeWebp, newKeyPair, pathOf, sha256, signManifest, uploadMedia } from './media-helpers';
 
 setupTestEnvironment();
 
@@ -230,26 +230,39 @@ describe('what the server refuses', () => {
 });
 
 describe('the upload step', () => {
-  it('only the owner can send bytes, with exactly the declared type and size, and only once', async () => {
+  it('only the holder of the signed upload URL can send bytes, with exactly the declared type and size', async () => {
     const data = await makeJpeg();
-    const other = await loginAs(await createUser('CITIZEN', j));
     const declared = await uploadMedia(citizen, device, data, { skipPut: true, skipConfirm: true });
     const id = declared.mediaId;
-    const put = (token: string, body: Buffer, headers: Record<string, string> = { 'content-type': 'image/jpeg' }) =>
-      call(putContent, 'PUT', `/api/v1/media/${id}/content`, { token, params: { id }, rawBytes: body, headers });
+    const url = pathOf(declared.declared.body.uploadUrl);
+    const q = new URL(`http://x${url}`).searchParams;
+    const exp = q.get('exp')!;
+    const sig = q.get('sig')!;
+    const put = (target: string, body: Buffer, headers: Record<string, string> = { 'content-type': 'image/jpeg' }, token?: string) =>
+      call(putContent, 'PUT', target, { token, params: { id }, rawBytes: body, headers });
 
-    expect((await put(other, data)).status).toBe(404);
-    expect((await put(citizen, data, { 'content-type': 'image/webp' })).status).toBe(415);
-    expect((await put(citizen, data, {})).status).toBe(415);
-    expect((await put(citizen, Buffer.concat([data, Buffer.from('x')]))).status).toBe(413);
-    expect((await put(citizen, data.subarray(0, data.length - 1))).status).toBe(400);
-    expect((await put(citizen, data, { 'content-type': 'image/jpeg', 'content-length': String(data.length + 5) })).status).toBe(400);
-    expect((await call(putContent, 'PUT', `/x`, { params: { id }, rawBytes: data, headers: { 'content-type': 'image/jpeg' } })).status).toBe(401);
+    // The URL is the credential: no signature, a bad one, an altered expiry, or a signature made for another upload all fail.
+    expect(declared.declared.body.uploadUrl).toContain(`/api/v1/media/${id}/content?exp=`);
+    expect((await put(`/api/v1/media/${id}/content`, data)).status).toBe(401);
+    expect((await put(`/api/v1/media/${id}/content`, data, undefined, citizen)).status).toBe(401); // a login alone is not enough
+    expect((await put(`/api/v1/media/${id}/content?exp=${exp}&sig=${'0'.repeat(64)}`, data)).status).toBe(401);
+    expect((await put(`/api/v1/media/${id}/content?exp=${Number(exp) + 3600}&sig=${sig}`, data)).status).toBe(401);
+    expect((await put(`/api/v1/media/${id}/content?exp=${exp}&sig=${sig.slice(0, 20)}`, data)).status).toBe(401);
+    const another = await uploadMedia(citizen, device, await makeJpeg(), { skipPut: true, skipConfirm: true });
+    expect((await put(pathOf(another.declared.body.uploadUrl), data)).status).toBe(401); // a signature for a different upload
+    expect((await put(signedUploadUrl('http://x', id, -5).replace('http://x', ''), data)).status).toBe(401); // expired
+
+    // With the real URL, exactly the declared type and size are enforced.
+    expect((await put(url, data, { 'content-type': 'image/webp' })).status).toBe(415);
+    expect((await put(url, data, {})).status).toBe(415);
+    expect((await put(url, Buffer.concat([data, Buffer.from('x')]))).status).toBe(413);
+    expect((await put(url, data.subarray(0, data.length - 1))).status).toBe(400);
+    expect((await put(url, data, { 'content-type': 'image/jpeg', 'content-length': String(data.length + 5) })).status).toBe(400);
     expect(await Storage.head(`staging/${id}`)).toBeNull(); // nothing was kept from the bad attempts
-    expect((await put(citizen, data)).status).toBe(204);
-    expect((await put(citizen, data)).status).toBe(204); // sending it again before confirming is harmless
+    expect((await put(url, data)).status).toBe(204);
+    expect((await put(url, data)).status).toBe(204); // sending it again before confirming is harmless
     expect((await call(confirmRoute, 'POST', '/x', { token: citizen, params: { id }, body: signManifest(device.privateKey, { v: 1, mediaId: id, deviceId: device.id, kind: 'PHOTO', sha256: sha256(data), capturedAt: new Date().toISOString(), lat: 21, lng: 81, accuracyM: 5, isMockLocation: false }) })).status).toBe(200);
-    expect((await put(citizen, data)).status).toBe(409); // already confirmed
+    expect((await put(url, data)).status).toBe(409); // already confirmed
   });
 
   it('refuses to declare an upload that is not allowed', async () => {
