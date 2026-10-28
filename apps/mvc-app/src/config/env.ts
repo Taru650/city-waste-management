@@ -66,6 +66,9 @@ const schema = z.object({
   GRIEVANCE_OFFICER_EMAIL: z.string().default(''),
   GRIEVANCE_OFFICER_PHONE: z.string().default(''),
 
+  /** Map tiles for the website's maps ({z}/{x}/{y}). Needs internet access from the browser; maps stay blank without it. */
+  MAP_TILE_URL: z.string().url().default('https://tile.openstreetmap.org/{z}/{x}/{y}.png'),
+
   DEMO_CENTER_LAT: z.coerce.number().min(-90).max(90).default(21.2514),
   DEMO_CENTER_LNG: z.coerce.number().min(-180).max(180).default(81.6296),
 });
@@ -126,6 +129,7 @@ function build(env: NodeJS.ProcessEnv) {
     grievanceOfficer: { name: e.GRIEVANCE_OFFICER_NAME, email: e.GRIEVANCE_OFFICER_EMAIL, phone: e.GRIEVANCE_OFFICER_PHONE },
     mail: { transport: e.MAIL_TRANSPORT, smtpUrl: e.SMTP_URL, from: e.MAIL_FROM },
     passwordResetUrl: `${e.APP_URL.replace(/\/$/, '')}/reset-password`,
+    mapTileUrl: e.MAP_TILE_URL,
     demoCenter: { lat: e.DEMO_CENTER_LAT, lng: e.DEMO_CENTER_LNG },
   };
 }

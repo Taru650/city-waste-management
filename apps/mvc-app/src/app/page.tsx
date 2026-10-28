@@ -1,3 +1,6 @@
+import { redirect } from 'next/navigation';
+
+/** The proxy already redirects "/"; this is the fallback if it is ever bypassed. */
 export default function Home() {
-  return <main style={{ padding: 24 }}>Swachh Seva Grievance Portal</main>;
+  redirect('/dashboard');
 }

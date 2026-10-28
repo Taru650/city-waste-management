@@ -10,3 +10,6 @@ playwright-report/
 next-env.d.ts
 AGENTS.md
 storage-test/
+storage-e2e/
+test-results/
+playwright-report/
