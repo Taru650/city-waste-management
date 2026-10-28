@@ -36,8 +36,7 @@ export interface Reply<T = any> {
   cookies: string[];
 }
 
-/** Calls a route handler exactly as Next.js would, without starting a server. */
-export async function call<T = any>(fn: RouteFn, method: string, path: string, o: CallOptions = {}): Promise<Reply<T>> {  
+function makeRequest(method: string, path: string, o: CallOptions): Request {
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(o.query ?? {})) url.searchParams.set(k, String(v));
   const headers = new Headers(o.headers ?? {});
@@ -51,7 +50,12 @@ export async function call<T = any>(fn: RouteFn, method: string, path: string, o
     body = JSON.stringify(o.body);
     if (!headers.has('content-type')) headers.set('content-type', 'application/json');
   }
-  const res = await fn(new Request(url, { method, headers, body: body as BodyInit | undefined }), { params: Promise.resolve(o.params ?? {}) });
+  return new Request(url, { method, headers, body: body as BodyInit | undefined });
+}
+
+/** Calls a route handler exactly as Next.js would, without starting a server. */
+export async function call<T = any>(fn: RouteFn, method: string, path: string, o: CallOptions = {}): Promise<Reply<T>> {  
+  const res = await fn(makeRequest(method, path, o), { params: Promise.resolve(o.params ?? {}) });
   const text = await res.text();
   let parsed: unknown = text;
   try {
@@ -60,6 +64,12 @@ export async function call<T = any>(fn: RouteFn, method: string, path: string, o
     // not JSON (exports, errors from the framework): keep the text
   }
   return { status: res.status, body: parsed as T, headers: res.headers, cookies: res.headers.getSetCookie() };
+}
+
+/** Like call(), but keeps the response body as bytes (spreadsheets, images). */
+export async function callBinary(fn: RouteFn, method: string, path: string, o: CallOptions = {}): Promise<{ status: number; headers: Headers; bytes: Buffer }> {
+  const res = await fn(makeRequest(method, path, o), { params: Promise.resolve(o.params ?? {}) });
+  return { status: res.status, headers: res.headers, bytes: Buffer.from(await res.arrayBuffer()) };
 }
 
 /** Browser-style call: cookies plus the CSRF header and a same-origin Origin. */
