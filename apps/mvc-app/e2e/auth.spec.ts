@@ -93,14 +93,17 @@ test.describe('Sign-in flows', () => {
 
   test('an expired access token is renewed silently from the refresh cookie', async ({ page, context }) => {
     await login(page, 'supervisorNorth');
-    const at = (await context.cookies()).find((c) => c.name === 'cwm_at')!;
+    const before = (await context.cookies()).find((c) => c.name === 'cwm_rt')!;
     // Drop only the access cookie, as the browser does when it expires.
     await context.clearCookies({ name: 'cwm_at' });
     await page.goto('/complaints');
     await expect(page).toHaveURL(/\/complaints$/);
     await expect(page.getByTestId('user-menu')).toBeVisible();
-    const renewed = (await context.cookies()).find((c) => c.name === 'cwm_at')!;
-    expect(renewed.value).not.toBe(at.value);
+    const after = await context.cookies();
+    expect(after.find((c) => c.name === 'cwm_at')?.value).toBeTruthy();
+    // Proof that a renewal really happened: refresh tokens are single use, so the stored one was replaced.
+    // (The access token itself can repeat within one second, so it proves nothing.)
+    expect(after.find((c) => c.name === 'cwm_rt')!.value).not.toBe(before.value);
   });
 
   test('a disabled account is signed out on its next page, without a redirect loop', async ({ page, browser }) => {

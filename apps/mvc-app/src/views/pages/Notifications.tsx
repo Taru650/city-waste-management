@@ -3,6 +3,7 @@
 import { Badge, Button, Card, List, Space, Typography } from 'antd';
 import Link from 'next/link';
 import { useState } from 'react';
+import { mutate as refreshKey } from 'swr';
 import { api, qs, useApi } from '@/views/lib/api';
 import { fmtDateTime } from '@/views/lib/format';
 import { PageHeader } from '@/views/components/PageHeader';
@@ -15,13 +16,13 @@ export function Notifications() {
   const markRead = async (n: Note) => {
     if (!n.readAt) {
       await api(`/notifications/${n.id}/read`, { method: 'POST', body: {} });
-      await mutate();
+      await Promise.all([mutate(), refreshKey('/notifications/unread-count')]); // the bell in the header counts them too
     }
   };
   return (
     <>
       <PageHeader eyebrow="Inbox" title="Notifications" subtitle="Assignments, SLA alerts and escalations for you"
-        actions={<Button onClick={async () => { await api('/notifications/read-all', { method: 'POST', body: {} }); await mutate(); }}>Mark all read</Button>} />
+        actions={<Button onClick={async () => { await api('/notifications/read-all', { method: 'POST', body: {} }); await Promise.all([mutate(), refreshKey('/notifications/unread-count')]); }}>Mark all read</Button>} />
       <Card size="small">
         <List<Note> dataSource={data?.items} data-testid="notifications"
           pagination={{ current: page, pageSize: 20, total: data?.total, onChange: setPage, hideOnSinglePage: true }}
