@@ -13,5 +13,7 @@ export const UserController = {
   workers: ({ user }: Ctx<undefined, undefined, Record<string, string>>) => UserService.workers(user),
   setStatus: ({ user, body, params, client }: Ctx<z.infer<typeof updateStatusSchema>, undefined, Id>) =>
     UserService.setStatus(user, uuidParam(params.id), body.status, client.ip),
-  resetPassword: ({ user, params, client }: Ctx<undefined, undefined, Id>) => UserService.helpdeskResetPassword(user, uuidParam(params.id), client.ip),
+  async resetPassword({ user, params, client }: Ctx<undefined, undefined, Id>) {
+    return new ApiResult(await UserService.helpdeskResetPassword(user, uuidParam(params.id), client.ip), { status: 201 });
+  },
 };

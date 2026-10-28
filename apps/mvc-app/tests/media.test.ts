@@ -256,7 +256,7 @@ describe('the upload step', () => {
     const other = await loginAs(await createUser('CITIZEN', j));
     const base = { deviceId: device.id, kind: 'PHOTO', contentType: 'image/jpeg', bytes: 1000, sha256: 'a'.repeat(64) };
     const post = (token: string, body: unknown) => call(createUpload, 'POST', '/x', { token, body });
-    expect((await post(citizen, base)).status).toBe(200);
+    expect((await post(citizen, base)).status).toBe(201);
     expect((await post(other, base)).status).toBe(400); // someone else's device
     expect((await post(citizen, { ...base, deviceId: newId() })).status).toBe(400);
     expect((await post(citizen, { ...base, contentType: 'video/mp4' })).status).toBe(400); // photo cannot be a video
@@ -272,7 +272,7 @@ describe('the upload step', () => {
 
   it('limits unfinished uploads and uploads per day', async () => {
     const body = { deviceId: device.id, kind: 'PHOTO', contentType: 'image/jpeg', bytes: 1000 };
-    for (let i = 0; i < 20; i++) expect((await call(createUpload, 'POST', '/x', { token: citizen, body: { ...body, sha256: sha256(Buffer.from(`p${i}`)) } })).status).toBe(200);
+    for (let i = 0; i < 20; i++) expect((await call(createUpload, 'POST', '/x', { token: citizen, body: { ...body, sha256: sha256(Buffer.from(`p${i}`)) } })).status).toBe(201);
     expect((await call(createUpload, 'POST', '/x', { token: citizen, body: { ...body, sha256: 'b'.repeat(64) } })).status).toBe(429);
 
     const t2 = await loginAs(await createUser('CITIZEN', j));

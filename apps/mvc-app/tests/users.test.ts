@@ -232,7 +232,7 @@ describe('helpdesk password reset', () => {
     expect((await call(login, 'POST', '/x', { body: { identifier: u.mobile, password: u.password } })).status).toBe(401); // locked
 
     const r = await call(resetPassword, 'POST', '/x', { token: tok.subA, params: { id: u.id } });
-    expect(r.status).toBe(200);
+    expect(r.status).toBe(201);
     expect(r.body.tempPassword).toMatch(/^[A-Za-z0-9]{12}$/);
     expect(Object.keys(r.body).sort()).toEqual(['id', 'tempPassword']);
     expect((await call(me, 'GET', '/x', { token: old.accessToken })).status).toBe(401);

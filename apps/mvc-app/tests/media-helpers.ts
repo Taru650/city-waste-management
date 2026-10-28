@@ -104,7 +104,7 @@ export async function uploadMedia(token: string, device: TestDevice, data: Buffe
     token,
     body: { deviceId: device.id, kind, contentType, bytes: o.declaredBytes ?? data.length, sha256: o.declaredSha ?? sha256(data) },
   });
-  if (declared.status !== 200) return { mediaId: '', declared };
+  if (declared.status !== 201) return { mediaId: '', declared };
   const mediaId: string = declared.body.mediaId;
   const result: UploadResult = { mediaId, declared };
   if (!o.skipPut) {

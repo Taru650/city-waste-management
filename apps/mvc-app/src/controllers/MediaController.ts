@@ -18,8 +18,9 @@ export const MediaController = {
     return new ApiResult(null, { status: 204 });
   },
 
-  createUpload: ({ user, body, req }: Ctx<z.infer<typeof createUploadSchema>, undefined, P>) =>
-    MediaService.createUpload(user, body as never, expectedOrigin(req)),
+  async createUpload({ user, body, req }: Ctx<z.infer<typeof createUploadSchema>, undefined, P>) {
+    return new ApiResult(await MediaService.createUpload(user, body as never, expectedOrigin(req)), { status: 201 });
+  },
 
   async upload({ user, params, req }: Ctx<undefined, undefined, P>) {
     await MediaService.receiveUpload(user, uuidParam(params.id), req);

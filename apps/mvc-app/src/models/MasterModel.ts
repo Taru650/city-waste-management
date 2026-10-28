@@ -39,6 +39,17 @@ export const UlbModel = {
   },
 };
 
+export interface WardForComplaint {
+  id: string;
+  ulb_id: string;
+  area_id: string | null;
+  district_id: string;
+  ulb_lgd: number;
+  district_lgd: number;
+  supervisor_id: string | null;
+  mismatch: boolean;
+}
+
 export interface WardOverlap {
   number: number;
   /** null: the database could not compute the overlap (edges almost, but not exactly, coincide). */
@@ -161,6 +172,47 @@ export const WardModel = {
       total += a?.a ?? 0;
     }
     return total;
+  },
+
+  /**
+   * Everything the complaint flow needs about a ward: ULB, district, LGD codes, the area supervisor (active and not
+   * expired), and, for a ward the citizen chose by hand, whether it lies more than `mismatchM` metres from the GPS point
+   * (0 when the point is inside it). Geodesic metres, as in the verified API.
+   */
+  async forComplaint(d: Db, wardId: string, lng: number, lat: number, mismatchM: number) {
+    return one<WardForComplaint>(
+      d,
+      `SELECT w.id, w.ulb_id, w.area_id, u.district_id, u.lgd_code AS ulb_lgd, dd.lgd_code AS district_lgd,
+              (SELECT a.supervisor_id FROM areas a
+                 JOIN users s ON s.id = a.supervisor_id AND s.status = 'ACTIVE' AND (s.access_expires_at IS NULL OR s.access_expires_at > NOW(3))
+                WHERE a.id = w.area_id) AS supervisor_id,
+              (b.ward_id IS NOT NULL AND ST_Distance(b.geom, ST_PointFromText(CONCAT('POINT(', ?, ' ', ?, ')'), 4326, 'axis-order=long-lat')) > ?) AS mismatch
+         FROM wards w
+         JOIN ulbs u ON u.id = w.ulb_id
+         JOIN districts dd ON dd.id = u.district_id
+         LEFT JOIN ward_boundaries b ON b.ward_id = w.id
+        WHERE w.active AND u.active AND dd.active AND w.id = ?`,
+      [lng, lat, mismatchM, wardId],
+    ).then((r) => r && { ...r, mismatch: !!r.mismatch });
+  },
+
+  /** The ward containing a point, in the same shape (lowest id wins if legacy data overlaps). */
+  async forComplaintAt(d: Db, lng: number, lat: number) {
+    return one<WardForComplaint>(
+      d,
+      `SELECT w.id, w.ulb_id, w.area_id, u.district_id, u.lgd_code AS ulb_lgd, dd.lgd_code AS district_lgd,
+              (SELECT a.supervisor_id FROM areas a
+                 JOIN users s ON s.id = a.supervisor_id AND s.status = 'ACTIVE' AND (s.access_expires_at IS NULL OR s.access_expires_at > NOW(3))
+                WHERE a.id = w.area_id) AS supervisor_id,
+              0 AS mismatch
+         FROM ward_boundaries b
+         JOIN wards w ON w.id = b.ward_id AND w.active
+         JOIN ulbs u ON u.id = w.ulb_id AND u.active
+         JOIN districts dd ON dd.id = u.district_id AND dd.active
+        WHERE ST_Contains(b.geom, ST_PointFromText(CONCAT('POINT(', ?, ' ', ?, ')'), 4326, 'axis-order=long-lat'))
+        ORDER BY w.id LIMIT 1`,
+      [lng, lat],
+    ).then((r) => r && { ...r, mismatch: false });
   },
 
   /** Serialises boundary changes of one ULB, so two overlapping uploads cannot both pass the overlap check. */
