@@ -61,6 +61,11 @@ const schema = z.object({
   SMTP_URL: z.string().default(''),
   MAIL_FROM: z.string().default('Swachh Seva <no-reply@example.gov.in>'),
 
+  /** Shown in the privacy notice (DPDP Act). Required in production. */
+  GRIEVANCE_OFFICER_NAME: z.string().default(''),
+  GRIEVANCE_OFFICER_EMAIL: z.string().default(''),
+  GRIEVANCE_OFFICER_PHONE: z.string().default(''),
+
   DEMO_CENTER_LAT: z.coerce.number().min(-90).max(90).default(21.2514),
   DEMO_CENTER_LNG: z.coerce.number().min(-180).max(180).default(81.6296),
 });
@@ -79,6 +84,9 @@ function build(env: NodeJS.ProcessEnv) {
   if (production && !cookieSecure) throw new Error('COOKIE_SECURE must be true in production (browsers only keep secure cookies over HTTPS).');
   if (production && e.TRUST_PROXY_HOPS < 1) {
     throw new Error('TRUST_PROXY_HOPS must be at least 1 in production: run the app behind an HTTPS reverse proxy and set the number of proxies (otherwise client IPs cannot be trusted).');
+  }
+  if (production && (!e.GRIEVANCE_OFFICER_NAME || !e.GRIEVANCE_OFFICER_EMAIL)) {
+    throw new Error('GRIEVANCE_OFFICER_NAME and GRIEVANCE_OFFICER_EMAIL are required in production (they are printed in the DPDP privacy notice).');
   }
   if (production && e.MAIL_TRANSPORT === 'smtp' && !e.SMTP_URL) throw new Error('SMTP_URL is required when MAIL_TRANSPORT=smtp.');
   return {
@@ -115,6 +123,7 @@ function build(env: NodeJS.ProcessEnv) {
     },
     clamav: { host: e.CLAMAV_HOST, port: e.CLAMAV_PORT },
     fcm: { serviceAccountJson: e.FCM_SERVICE_ACCOUNT_JSON, apiBase: e.FCM_API_BASE.replace(/\/$/, '') },
+    grievanceOfficer: { name: e.GRIEVANCE_OFFICER_NAME, email: e.GRIEVANCE_OFFICER_EMAIL, phone: e.GRIEVANCE_OFFICER_PHONE },
     mail: { transport: e.MAIL_TRANSPORT, smtpUrl: e.SMTP_URL, from: e.MAIL_FROM },
     passwordResetUrl: `${e.APP_URL.replace(/\/$/, '')}/reset-password`,
     demoCenter: { lat: e.DEMO_CENTER_LAT, lng: e.DEMO_CENTER_LNG },

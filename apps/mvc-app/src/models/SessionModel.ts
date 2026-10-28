@@ -1,5 +1,5 @@
 import type { Db } from '@/db/sql';
-import { one, run } from '@/db/sql';
+import { one, query, run } from '@/db/sql';
 import type { Role, UserStatus } from '@/lib/enums';
 
 export interface RotationRow {
@@ -89,6 +89,12 @@ export const PasswordResetModel = {
 };
 
 export const ConsentModel = {
+  async withdrawAll(d: Db, userId: string) {
+    await run(d, `UPDATE consents SET withdrawn_at = NOW(3) WHERE user_id = ? AND withdrawn_at IS NULL`, [userId]);
+  },
+  list(d: Db, userId: string) {
+    return query(d, `SELECT purpose, notice_version AS noticeVersion, language, granted_at AS grantedAt, withdrawn_at AS withdrawnAt FROM consents WHERE user_id = ? ORDER BY granted_at, id`, [userId]);
+  },
   async record(d: Db, v: { id: string; userId: string; purpose: string; noticeVersion: string; language: 'hi' | 'en' }) {
     await run(d, `INSERT INTO consents (id, user_id, purpose, notice_version, language) VALUES (?,?,?,?,?)`, [v.id, v.userId, v.purpose, v.noticeVersion, v.language]);
   },

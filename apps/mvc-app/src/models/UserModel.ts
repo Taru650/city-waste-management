@@ -165,4 +165,45 @@ export const UserModel = {
       [id],
     );
   },
+
+  /** Is this email hash used by an account other than `exceptId`? */
+  async emailTakenByOther(d: Db, emailHash: string, exceptId: string): Promise<boolean> {
+    return !!(await one(d, `SELECT 1 AS x FROM users WHERE email_hash = ? AND id <> ? LIMIT 1`, [emailHash, exceptId]));
+  },
+
+  /** Right of correction: only the fields given change (guardianName: null removes it). */
+  async correctProfile(d: Db, id: string, v: { name?: string; guardianName?: string | null; emailEnc?: string; emailHash?: string }): Promise<void> {
+    await run(
+      d,
+      `UPDATE users SET name = COALESCE(?, name),
+              guardian_name = IF(?, ?, guardian_name),
+              email_enc = COALESCE(?, email_enc), email_hash = COALESCE(?, email_hash)
+        WHERE id = ?`,
+      [v.name ?? null, v.guardianName !== undefined ? 1 : 0, v.guardianName ?? null, v.emailEnc ?? null, v.emailHash ?? null, id],
+    );
+  },
+
+  /** Right of erasure: identity and contact details go, the account can no longer sign in. */
+  async eraseIdentity(d: Db, id: string): Promise<void> {
+    await run(
+      d,
+      `UPDATE users SET name = 'Deleted user', guardian_name = NULL, mobile_enc = NULL, mobile_hash = NULL, email_enc = NULL,
+              email_hash = NULL, password_hash = '!erased', status = 'DISABLED', erased_at = NOW(3)
+        WHERE id = ?`,
+      [id],
+    );
+  },
+
+  /** The full profile for the access export (encrypted fields are decrypted by the service). */
+  exportProfile(d: Db, id: string) {
+    return one(
+      d,
+      `SELECT u.name, u.guardian_name, u.mobile_enc, u.email_enc, u.preferred_language, u.status, u.created_at, u.last_login_at,
+              w.number AS ward_number, ul.name AS ulb_name, dd.name AS district_name
+         FROM users u LEFT JOIN wards w ON w.id = u.home_ward_id LEFT JOIN ulbs ul ON ul.id = u.home_ulb_id
+         LEFT JOIN districts dd ON dd.id = u.home_district_id
+        WHERE u.id = ?`,
+      [id],
+    );
+  },
 };

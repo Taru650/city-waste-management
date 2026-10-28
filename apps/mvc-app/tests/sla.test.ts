@@ -181,15 +181,15 @@ describe('the background jobs', () => {
     await runner.ensurePeriodic();
     await runner.ensurePeriodic();
     const names = (await query<{ name: string }>(db(), `SELECT name FROM jobs WHERE status = 'PENDING' ORDER BY name`)).map((r) => r.name);
-    expect(names).toEqual(['auto-close', 'prune-jobs', 'purge-media', 'push-dispatch', 'requeue-videos', 'sla-sweep']);
+    expect(names).toEqual(['auto-close', 'privacy-purge', 'prune-jobs', 'purge-media', 'push-dispatch', 'requeue-videos', 'sla-sweep', 'zone-handover']);
 
-    // six timed jobs, plus the push dispatch that the SLA sweep queued for the notifications it wrote
-    expect(await runner.runDue({ exclude: ['video'] })).toBe(7);
+    // eight timed jobs, plus the push dispatch that the SLA sweep queued for the notifications it wrote
+    expect(await runner.runDue({ exclude: ['video'] })).toBe(9);
     expect((await row(id))!.sla_breached_at).toBeTruthy(); // the SLA job did its work
     const done = (await query<{ name: string }>(db(), `SELECT name FROM jobs WHERE status = 'DONE' ORDER BY name`)).map((r) => r.name);
-    expect(done).toEqual(['auto-close', 'dispatch', 'prune-jobs', 'purge-media', 'push-dispatch', 'requeue-videos', 'sla-sweep']);
+    expect(done).toEqual(['auto-close', 'dispatch', 'privacy-purge', 'prune-jobs', 'purge-media', 'push-dispatch', 'requeue-videos', 'sla-sweep', 'zone-handover']);
     const next = await query<{ name: string; far: number }>(db(), `SELECT name, run_at > DATE_ADD(NOW(3), INTERVAL 20 SECOND) AS far FROM jobs WHERE status = 'PENDING'`);
-    expect(next).toHaveLength(6);
+    expect(next).toHaveLength(8);
     expect(next.every((n) => n.far)).toBe(true);
     expect(await runner.runDue({ exclude: ['video'] })).toBe(0);
   });
@@ -227,7 +227,7 @@ describe('the worker process', () => {
       expect(output).toContain('[worker] started');
       // its timed jobs are scheduled
       const scheduled = await query(db(), `SELECT DISTINCT name FROM jobs WHERE dedupe_key LIKE 'periodic:%'`);
-      expect(scheduled.length).toBeGreaterThanOrEqual(6);
+      expect(scheduled.length).toBeGreaterThanOrEqual(8);
     } finally {
       child.kill('SIGTERM');
     }

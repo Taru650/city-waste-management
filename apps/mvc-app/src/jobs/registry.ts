@@ -3,7 +3,9 @@ import { JobModel } from '@/models/JobModel';
 import { ComplaintService } from '@/services/ComplaintService';
 import { MediaService } from '@/services/MediaService';
 import { NotificationService } from '@/services/NotificationService';
+import { PrivacyService } from '@/services/PrivacyService';
 import { SlaService } from '@/services/SlaService';
+import { ZoneService } from '@/services/ZoneService';
 import { JobRunner } from './runner';
 import { QUEUES } from './queue';
 
@@ -28,6 +30,9 @@ export function createRunner(): JobRunner {
   runner.register(QUEUES.MAINTENANCE, 'purge-media', () => MediaService.purgeOrphans()).every(QUEUES.MAINTENANCE, 'purge-media', HOUR);
   runner.register(QUEUES.MAINTENANCE, 'requeue-videos', () => MediaService.requeueStalledVideos()).every(QUEUES.MAINTENANCE, 'requeue-videos', 10 * MINUTE);
   runner.register(QUEUES.MAINTENANCE, 'prune-jobs', () => JobModel.pruneFinished(db(), 7)).every(QUEUES.MAINTENANCE, 'prune-jobs', 24 * HOUR);
+
+  runner.register(QUEUES.MAINTENANCE, 'zone-handover', () => ZoneService.handover()).every(QUEUES.MAINTENANCE, 'zone-handover', 5 * MINUTE);
+  runner.register(QUEUES.MAINTENANCE, 'privacy-purge', () => PrivacyService.purge()).every(QUEUES.MAINTENANCE, 'privacy-purge', 24 * HOUR);
 
   return runner;
 }
